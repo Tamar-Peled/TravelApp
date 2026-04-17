@@ -702,9 +702,9 @@ export function CollectionLanding({
     <>
       <div
         key={selectedTripId ?? "library"}
-        className="flex min-h-0 flex-1 flex-col px-4 pb-6 pt-1 transition-opacity duration-150 ease-out sm:px-6 sm:pb-8 sm:pt-2 lg:px-8 lg:pt-4"
+        className="flex min-h-0 flex-1 flex-col px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] pt-[max(0.5rem,env(safe-area-inset-top,0px))] transition-opacity duration-150 ease-out sm:px-6 sm:pb-[calc(2rem+env(safe-area-inset-bottom,0px))] lg:px-8 lg:pt-4"
       >
-        <div className="mx-auto w-full max-w-6xl">
+        <div className="mx-auto w-full max-w-6xl max-w-[100vw]">
         <div className="sticky top-0 z-40 -mx-4 mb-2 flex items-center justify-between border-b border-zinc-200/70 bg-[#FAF9F6]/92 px-4 pb-2 pt-[max(0.6rem,env(safe-area-inset-top,0px))] backdrop-blur-md sm:-mx-6 sm:px-6 lg:hidden">
           <button
             type="button"
@@ -747,7 +747,7 @@ export function CollectionLanding({
 
         <div className="text-center lg:text-left">
           <div className="mt-1 flex flex-col items-center gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h1 className="text-balance text-2xl font-semibold leading-tight tracking-tight text-zinc-900 sm:text-3xl">
+            <h1 className="text-balance text-2xl font-extrabold leading-tight tracking-tight text-[var(--primary)] sm:text-3xl lg:text-4xl">
               {isTripView && selectedTrip ? selectedTrip.name : <>Inbox</>}
             </h1>
             <div className="flex items-center gap-2">
