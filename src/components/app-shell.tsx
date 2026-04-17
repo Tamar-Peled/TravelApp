@@ -201,7 +201,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-[#FAF9F6] lg:flex-row">
+    <div className="flex min-h-[100svh] flex-col overflow-x-hidden bg-[#FAF9F6] min-h-[100dvh] lg:flex-row">
       <Sidebar
         active={active}
         onSelect={handleNavSelect}
@@ -258,7 +258,7 @@ export function AppShell() {
           type="button"
           onClick={() => setCreateTripOpen(true)}
           title="Add Trip"
-          className="fixed bottom-[88px] right-5 z-40 flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-[var(--primary)] text-white shadow-[0_16px_48px_-20px_rgba(15,92,86,0.65)] transition-transform duration-300 hover:-translate-y-1 active:scale-95 lg:bottom-6 lg:right-6"
+          className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] right-5 z-40 flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-[var(--primary)] text-white shadow-[0_16px_48px_-20px_rgba(15,92,86,0.65)] transition-transform duration-300 hover:-translate-y-1 active:scale-95 lg:bottom-6 lg:right-6"
           aria-label="Create new trip"
         >
           <Plus className="h-6 w-6" strokeWidth={2} aria-hidden />

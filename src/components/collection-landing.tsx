@@ -1055,7 +1055,7 @@ export function CollectionLanding({
         type="button"
         onClick={onAddPlace}
         title="Add Item"
-        className="fixed bottom-[88px] right-5 z-40 flex h-14 w-14 touch-manipulation items-center justify-center rounded-full bg-[var(--primary)] text-white shadow-[0_16px_48px_-20px_rgba(15,92,86,0.65)] transition-transform duration-300 hover:-translate-y-1 active:scale-95 lg:bottom-6 lg:right-6"
+        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] right-5 z-40 flex h-14 w-14 touch-manipulation items-center justify-center rounded-full bg-[var(--primary)] text-white shadow-[0_16px_48px_-20px_rgba(15,92,86,0.65)] transition-transform duration-300 hover:-translate-y-1 active:scale-95 lg:bottom-6 lg:right-6"
         aria-label="Add New Item"
       >
         <Plus className="h-6 w-6" strokeWidth={2} aria-hidden />
