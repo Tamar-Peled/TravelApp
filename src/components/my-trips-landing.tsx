@@ -37,7 +37,7 @@ export function MyTripsLanding({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] pt-[max(0.5rem,env(safe-area-inset-top,0px))] sm:px-6 sm:pb-[calc(2rem+env(safe-area-inset-bottom,0px))] lg:px-8 lg:pt-4">
-      <div className="mx-auto w-full max-w-6xl max-w-[100vw]">
+      <div className="w-full max-w-none">
         <div className="sticky top-0 z-40 -mx-4 mb-2 flex items-center justify-between border-b border-zinc-200/70 bg-[#FAF9F6]/92 px-4 pb-2 pt-[max(0.6rem,env(safe-area-inset-top,0px))] backdrop-blur-md sm:-mx-6 sm:px-6 lg:hidden">
           <button
             type="button"
@@ -126,13 +126,13 @@ export function MyTripsLanding({
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 min-[380px]:grid-cols-2 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {trips.map((t) => (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => onSelectTrip(t.id)}
-                    className="touch-manipulation group relative aspect-[3/4] w-full overflow-hidden rounded-2xl text-left shadow-[0_2px_12px_-4px_rgba(15,23,42,0.16),0_1px_2px_-1px_rgba(15,23,42,0.06)] transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-[0_6px_20px_-8px_rgba(15,23,42,0.20)] active:translate-y-0 active:shadow-[0_2px_12px_-4px_rgba(15,23,42,0.18)] sm:min-h-[180px] sm:aspect-auto sm:rounded-xl"
+                    className="touch-manipulation group relative aspect-[3/4] w-full overflow-hidden rounded-2xl text-left shadow-[0_2px_12px_-4px_rgba(15,23,42,0.16),0_1px_2px_-1px_rgba(15,23,42,0.06)] transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-[0_6px_20px_-8px_rgba(15,23,42,0.20)] active:translate-y-0 active:shadow-[0_2px_12px_-4px_rgba(15,23,42,0.18)]"
                   >
                     <div className="absolute inset-0 bg-zinc-100">
                       {tripCoverPhotoRefs[t.id] ? (

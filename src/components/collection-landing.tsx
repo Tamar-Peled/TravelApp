@@ -704,7 +704,7 @@ export function CollectionLanding({
         key={selectedTripId ?? "library"}
         className="flex min-h-0 flex-1 flex-col px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] pt-[max(0.5rem,env(safe-area-inset-top,0px))] transition-opacity duration-150 ease-out sm:px-6 sm:pb-[calc(2rem+env(safe-area-inset-bottom,0px))] lg:px-8 lg:pt-4"
       >
-        <div className="mx-auto w-full max-w-6xl max-w-[100vw]">
+        <div className="w-full max-w-none">
         <div className="sticky top-0 z-40 -mx-4 mb-2 flex items-center justify-between border-b border-zinc-200/70 bg-[#FAF9F6]/92 px-4 pb-2 pt-[max(0.6rem,env(safe-area-inset-top,0px))] backdrop-blur-md sm:-mx-6 sm:px-6 lg:hidden">
           <button
             type="button"
