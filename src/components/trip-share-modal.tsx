@@ -61,6 +61,7 @@ export function TripShareModal({
   useEffect(() => {
     if (!open) return;
     closeRef.current?.focus();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [open, tripId]);
 

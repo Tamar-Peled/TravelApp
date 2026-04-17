@@ -1,13 +1,12 @@
 "use client";
 
-import { Compass, Folder, Plus } from "lucide-react";
+import { Compass, Folder } from "lucide-react";
 
 type MobileHeaderProps = {
-  onAdd: () => void;
   onOpenTrips: () => void;
 };
 
-export function MobileHeader({ onAdd, onOpenTrips }: MobileHeaderProps) {
+export function MobileHeader({ onOpenTrips }: MobileHeaderProps) {
   return (
     <header className="fixed left-0 right-0 top-0 z-40 flex items-center justify-between gap-3 border-b border-zinc-200/70 bg-[#FAF9F6]/90 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] backdrop-blur-md lg:hidden">
       <div className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5">
@@ -31,14 +30,6 @@ export function MobileHeader({ onAdd, onOpenTrips }: MobileHeaderProps) {
           aria-label="Open trips"
         >
           <Folder className="h-6 w-6" strokeWidth={1.5} aria-hidden />
-        </button>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="touch-manipulation flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[var(--primary)] text-[var(--primary-foreground)] shadow-[0_8px_24px_-8px_rgba(15,92,86,0.45)] transition-transform active:scale-95"
-          aria-label="Add new item"
-        >
-          <Plus className="h-6 w-6" strokeWidth={1.5} aria-hidden />
         </button>
       </div>
     </header>

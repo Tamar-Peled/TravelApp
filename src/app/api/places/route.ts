@@ -71,6 +71,7 @@ export async function POST(req: Request) {
       name?: string;
       city?: string | null;
       country?: string | null;
+      subLocation?: string | null;
       category?:
         | "Food"
         | "Stay"
@@ -127,6 +128,7 @@ export async function POST(req: Request) {
         notes: body.notes?.trim() || null,
         city: body.city?.trim() || null,
         country: body.country?.trim() || null,
+        subLocation: body.subLocation?.trim() || null,
         category: body.category ?? null,
         sourceUrl: body.sourceUrl?.trim() || null,
         formattedAddress: body.formattedAddress?.trim() || null,

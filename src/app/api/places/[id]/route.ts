@@ -9,6 +9,7 @@ type PatchBody = {
   tripId?: string | null;
   description?: string | null;
   notes?: string | null;
+  subLocation?: string | null;
   category?: PlaceCategory | null;
 };
 
@@ -86,6 +87,10 @@ export async function PATCH(
             : body.description?.trim() || null,
         notes:
           body.notes === undefined ? undefined : body.notes?.trim() || null,
+        subLocation:
+          body.subLocation === undefined
+            ? undefined
+            : body.subLocation?.trim() || null,
         category: body.category === undefined ? undefined : body.category,
       },
       include: { trip: true },

@@ -100,6 +100,11 @@ model Trip {
   endDate   DateTime?
   userId String @map("ownerId")
 
+  // Public share link token (when enabled in-app). If set, trip is viewable read-only by anyone with the link.
+  shareToken String? @unique
+  linkShareEnabled Boolean @default(false)
+  linkShareRole    Role    @default(VIEWER)
+
   owner           User                 @relation("TripOwner", fields: [userId], references: [id], onDelete: Cascade)
   collaborators   TripCollaborator[]
   places          Place[]
@@ -135,6 +140,7 @@ model Place {
   location    String?
   city        String?
   country     String?
+  subLocation String?
   category    PlaceCategory?
   sourceUrl   String?
   tag         String?

@@ -29,18 +29,21 @@ export async function POST(req: Request) {
     let tripId: string | undefined;
     let sourceUrl: string | undefined;
     let text: string | undefined;
-    let imageDataUrl: string | undefined;
+    const imageDataUrls: string[] = [];
 
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData();
       sourceUrl = (form.get("sourceUrl")?.toString() || "").trim() || undefined;
       text = (form.get("text")?.toString() || "").trim() || undefined;
-      const file = form.get("image");
-      if (file && file instanceof File && file.size > 0) {
+      const files = [
+        ...form.getAll("images"),
+        ...form.getAll("image"), // backwards compat
+      ].filter((f): f is File => f instanceof File && f.size > 0);
+      for (const file of files.slice(0, 5)) {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const b64 = Buffer.from(bytes).toString("base64");
         const mime = file.type || "image/png";
-        imageDataUrl = `data:${mime};base64,${b64}`;
+        imageDataUrls.push(`data:${mime};base64,${b64}`);
       }
     } else {
       const body = (await req.json()) as ExtractRequestBody;
@@ -48,7 +51,7 @@ export async function POST(req: Request) {
       text = body.text?.trim();
     }
 
-    if (!sourceUrl && !text && !imageDataUrl) {
+    if (!sourceUrl && !text && imageDataUrls.length === 0) {
       return NextResponse.json(
         { error: "Provide sourceUrl, text, or image" },
         { status: 400 },
@@ -89,70 +92,75 @@ export async function POST(req: Request) {
     if (text) promptParts.push(`TEXT:\n${text}`);
     const input = promptParts.join("\n\n");
 
-    // OpenAI Structured Outputs (JSON Schema) for strict extraction.
-    const resp = await client.responses.create({
-      model: "gpt-4o",
-      temperature: 0.2,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "place_extract",
-          strict: true,
-          schema: extractedPlaceJsonSchema,
-        },
-      },
-      input: [
-        {
-          role: "system",
-          content:
-            "Extract travel places from the provided input (URL/text and/or screenshot). " +
-            "Return an object with a places array matching the JSON schema. " +
-            "description must be 2-3 sentences per place. " +
-            "Only include real places; dedupe near-duplicates.",
-        },
-        {
-          role: "user",
-          content:
-            "Return a best-effort extraction of ALL places mentioned. If city/country are unclear, infer from context.\n\n" +
-            input,
-        },
-        ...(imageDataUrl
-          ? [
-              {
-                role: "user" as const,
-                content: [
-                  {
-                    type: "input_text" as const,
-                    text: "Screenshot attached. Read it and extract all places.",
-                  },
-                  {
-                    type: "input_image" as const,
-                    image_url: imageDataUrl,
-                    detail: "low" as const,
-                  },
-                ],
-              },
-            ]
-          : []),
-      ],
-    });
+    const schemaFormat = {
+      type: "json_schema" as const,
+      name: "place_extract",
+      strict: true,
+      schema: extractedPlaceJsonSchema,
+    };
 
-    const raw = resp.output_text;
-    if (!raw) {
-      return NextResponse.json(
-        { error: "Extraction failed" },
-        { status: 502 },
-      );
+    const extractedAll: ExtractedPlace[] = [];
+    const runs = imageDataUrls.length > 0 ? imageDataUrls : [null];
+    for (const imageDataUrl of runs) {
+      // OpenAI Structured Outputs (JSON Schema) for strict extraction.
+      const resp = await client.responses.create({
+        model: "gpt-4o",
+        temperature: 0.2,
+        text: { format: schemaFormat },
+        input: [
+          {
+            role: "system",
+            content:
+              "Extract travel places from the provided input (URL/text and/or screenshot). " +
+              "Return an object with a places array matching the JSON schema. " +
+              "description must be 2-3 sentences per place. " +
+              "Only include real places; dedupe near-duplicates.",
+          },
+          {
+            role: "user",
+            content:
+              "Return a best-effort extraction of ALL places mentioned. If city/country are unclear, infer from context.\n\n" +
+              input,
+          },
+          ...(imageDataUrl
+            ? [
+                {
+                  role: "user" as const,
+                  content: [
+                    {
+                      type: "input_text" as const,
+                      text: "Screenshot attached. Read it and extract all places.",
+                    },
+                    {
+                      type: "input_image" as const,
+                      image_url: imageDataUrl,
+                      detail: "low" as const,
+                    },
+                  ],
+                },
+              ]
+            : []),
+        ],
+      });
+
+      const raw = resp.output_text;
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw) as ExtractedPlacesPayload;
+        if (Array.isArray(parsed.places)) extractedAll.push(...parsed.places);
+      } catch {
+        // ignore this run; continue others
+      }
     }
-    let extracted: ExtractedPlace[];
-    try {
-      const parsed = JSON.parse(raw) as ExtractedPlacesPayload;
-      extracted = parsed.places;
-    } catch {
-      return NextResponse.json(
-        { error: "Extraction returned invalid JSON" },
-        { status: 502 },
-      );
+
+    // Dedupe by name+city+country
+    const seen = new Set<string>();
+    const extracted: ExtractedPlace[] = [];
+    for (const p of extractedAll) {
+      const key = `${p.name}`.trim().toLowerCase() + "|" + `${p.city}`.trim().toLowerCase() + "|" + `${p.country}`.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      extracted.push(p);
     }
     if (!Array.isArray(extracted) || extracted.length === 0) {
       return NextResponse.json({ error: "No places found" }, { status: 404 });

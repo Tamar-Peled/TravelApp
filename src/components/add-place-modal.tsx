@@ -51,6 +51,7 @@ type DraftPlace = {
   country: string;
   category: Category;
   description: string;
+  subLocation: string;
   formattedAddress: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -122,13 +123,17 @@ export function AddPlaceModal({
   const closeRef = useRef<HTMLButtonElement>(null);
 
   const [input, setInput] = useState("");
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [stage, setStage] = useState<
     "idle" | "extracting" | "preview" | "saving"
   >("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState<string>("Working…");
   const [drafts, setDrafts] = useState<DraftPlace[]>([]);
+  const [subLocation, setSubLocation] = useState<string>("");
+  const [subLocationSuggestions, setSubLocationSuggestions] = useState<string[]>(
+    [],
+  );
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pageSize = 5;
@@ -150,15 +155,58 @@ export function AddPlaceModal({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFormError(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStage("idle");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingText("Working…");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDrafts([]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditingIndex(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setInput("");
-    setImageFile(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setImageFiles([]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSubLocation("");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSubLocationSuggestions([]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleCount(pageSize);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!currentTripId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSubLocationSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/places?tripId=${encodeURIComponent(currentTripId)}`, {
+          cache: "no-store",
+        });
+        const json = (await res.json()) as { places?: Array<{ subLocation?: string | null }> };
+        if (!res.ok) return;
+        const uniq = new Set<string>();
+        for (const p of json.places ?? []) {
+          const v = (p.subLocation ?? "").trim();
+          if (v) uniq.add(v);
+        }
+        const next = [...uniq].sort((a, b) => a.localeCompare(b));
+        if (!cancelled) setSubLocationSuggestions(next);
+      } catch {
+        if (!cancelled) setSubLocationSuggestions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, currentTripId]);
 
   const canConfirm = useMemo(() => {
     return drafts.some((d) => d.selected && d.name.trim());
@@ -186,20 +234,20 @@ export function AddPlaceModal({
 
   function computeLoadingLabel(from: string) {
     const trimmed = from.trim();
-    if (imageFile && !trimmed) return "Reading your screenshot...";
+    if (imageFiles.length > 0 && !trimmed) return "Reading your screenshot...";
     if (trimmed) {
       const parsed = resolveTextOrUrl(trimmed);
       if (parsed.sourceUrl) return "Searching link...";
       return "Identifying notes...";
     }
-    if (imageFile) return "Reading your screenshot...";
+    if (imageFiles.length > 0) return "Reading your screenshot...";
     return "Working...";
   }
 
   async function runExtract(from: string) {
     setFormError(null);
     const trimmed = from.trim();
-    if (!trimmed && !imageFile) {
+    if (!trimmed && imageFiles.length === 0) {
       setFormError("Paste a link/text or upload a screenshot.");
       return;
     }
@@ -216,7 +264,7 @@ export function AddPlaceModal({
         if (parsed.sourceUrl) form.set("sourceUrl", parsed.sourceUrl);
         if (parsed.text) form.set("text", parsed.text);
       }
-      if (imageFile) form.set("image", imageFile);
+      for (const f of imageFiles) form.append("images", f);
 
       const res = await fetch("/api/extract", { method: "POST", body: form });
       const data = (await res.json()) as Partial<ExtractResponse> & {
@@ -232,6 +280,7 @@ export function AddPlaceModal({
         country: p.country,
         category: p.category,
         description: p.description,
+        subLocation: "",
         formattedAddress: p.formattedAddress,
         latitude: p.latitude,
         longitude: p.longitude,
@@ -267,6 +316,7 @@ export function AddPlaceModal({
               category: d.category,
               sourceUrl: d.sourceUrl,
               description: d.description,
+              subLocation: (d.subLocation || subLocation).trim() || null,
               notes: null,
               formattedAddress: d.formattedAddress,
               latitude: d.latitude,
@@ -311,10 +361,11 @@ export function AddPlaceModal({
   useEffect(() => {
     if (!open) return;
     if (stage !== "idle") return;
-    if (!imageFile) return;
+    if (imageFiles.length === 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void runExtract(input);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, imageFile]);
+  }, [open, imageFiles]);
 
   if (!open) return null;
 
@@ -396,9 +447,10 @@ export function AddPlaceModal({
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  setImageFile(f);
+                  const files = Array.from(e.target.files ?? []);
+                  setImageFiles(files);
                 }}
                 className="sr-only"
               />
@@ -409,15 +461,17 @@ export function AddPlaceModal({
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-zinc-200/90 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50"
                 >
                   <Upload className="h-4 w-4" strokeWidth={1.5} aria-hidden />
-                  Upload Image
+                  Upload Image(s)
                 </button>
                 <p className="min-w-0 flex-1 truncate text-xs text-zinc-500">
-                  {imageFile ? `Selected: ${imageFile.name}` : "PNG, JPG, or WebP"}
+                  {imageFiles.length > 0
+                    ? `Selected: ${imageFiles.length} file${imageFiles.length === 1 ? "" : "s"}`
+                    : "PNG, JPG, or WebP"}
                 </p>
               </div>
-              {imageFile && (
+              {imageFiles.length > 0 && (
                 <p className="mt-1 text-xs text-zinc-500">
-                  Attached: {imageFile.name}
+                  Attached: {imageFiles.map((f) => f.name).join(", ")}
                 </p>
               )}
             </div>
@@ -443,7 +497,7 @@ export function AddPlaceModal({
             <div className="mt-5 rounded-xl border border-zinc-100 bg-white/80 p-4 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.06)]">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
-                  Found places
+                  Found items
                 </p>
                 <button
                   type="button"
@@ -458,6 +512,27 @@ export function AddPlaceModal({
                   {anySelected ? "Deselect All" : "Select All"}
                 </button>
               </div>
+
+              <label className="mt-3 block">
+                <span className="mb-1 block text-xs font-medium text-zinc-500">
+                  Sub-location
+                  <span className="ml-1 text-[11px] font-normal text-zinc-400">
+                    (Optional)
+                  </span>
+                </span>
+                <datalist id="subLocation-suggestions">
+                  {subLocationSuggestions.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+                <input
+                  value={subLocation}
+                  onChange={(e) => setSubLocation(e.target.value)}
+                  list={subLocationSuggestions.length > 0 ? "subLocation-suggestions" : undefined}
+                  placeholder="e.g., Koh Samui (applies to saved items unless overridden)"
+                  className="min-h-10 w-full rounded-xl border border-zinc-200/90 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-300 focus:shadow-[0_0_0_3px_var(--primary-muted)]"
+                />
+              </label>
 
               <ul className="mt-3 max-h-[60vh] space-y-2 overflow-y-auto pr-1">
                 {shownDrafts.map((d, idx) => {
@@ -493,7 +568,7 @@ export function AddPlaceModal({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span
-                            className={`inline-flex items-center gap-1.5 rounded px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide ring-1 ring-zinc-200/70 ${
+                            className={`inline-flex items-center gap-1.5 rounded-full border border-zinc-200/80 bg-white/90 px-2.5 py-1 text-[11px] font-semibold tracking-tight text-zinc-800 shadow-sm ${
                               meta ? meta.cls : "bg-zinc-500/[0.06] text-zinc-700"
                             }`}
                           >
@@ -528,6 +603,27 @@ export function AddPlaceModal({
                                 prev.map((p, i) => (i === idx ? { ...p, name: e.target.value } : p)),
                               )
                             }
+                            className="min-h-10 w-full rounded-lg border border-zinc-200/90 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-300 focus:shadow-[0_0_0_3px_var(--primary-muted)]"
+                          />
+                        </label>
+                        <label className="block sm:col-span-2">
+                          <span className="mb-1 block text-xs font-medium text-zinc-500">
+                            Sub-location
+                            <span className="ml-1 text-[11px] font-normal text-zinc-400">
+                              (Optional)
+                            </span>
+                          </span>
+                          <input
+                            value={d.subLocation}
+                            onChange={(e) =>
+                              setDrafts((prev) =>
+                                prev.map((p, i) =>
+                                  i === idx ? { ...p, subLocation: e.target.value } : p,
+                                ),
+                              )
+                            }
+                            list={subLocationSuggestions.length > 0 ? "subLocation-suggestions" : undefined}
+                            placeholder="e.g., Koh Samui"
                             className="min-h-10 w-full rounded-lg border border-zinc-200/90 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-300 focus:shadow-[0_0_0_3px_var(--primary-muted)]"
                           />
                         </label>

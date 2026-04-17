@@ -2,6 +2,7 @@
 
 import type { Place, PlaceCategory, Trip } from "@prisma/client";
 import {
+  ArrowLeft,
   BusFront,
   Camera,
   ChevronDown,
@@ -16,14 +17,17 @@ import {
   Share2,
   Trash2,
   UtensilsCrossed,
+  Search,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { BreadcrumbNav } from "@/components/breadcrumb-nav";
 import { buildTripBreadcrumb } from "@/lib/trip-breadcrumb";
 import { PlaceDetailModal } from "@/components/place-detail-modal";
+import { TripLinkShareModal } from "@/components/trip-link-share-modal";
 import { TripShareModal } from "@/components/trip-share-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { CategorySelect } from "@/components/category-select";
 import { toast } from "sonner";
 
 const INBOX_CRUMBS = [
@@ -38,6 +42,8 @@ export type PlaceCardData = {
   title: string;
   location: string;
   category: PlaceCategory | null;
+  subLocation: string | null;
+  description: string | null;
   photoReference: string | null;
   sourceUrl: string | null;
 };
@@ -76,7 +82,6 @@ function CategoryBadge({
   category: PlaceCategory | null;
   onChange: (next: PlaceCategory | null) => void;
 }) {
-  const meta = category ? CATEGORY_META[category] : null;
   return (
     <div
       className="relative"
@@ -84,26 +89,7 @@ function CategoryBadge({
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
-      <select
-        value={category ?? ""}
-        onChange={(e) =>
-          onChange((e.target.value || null) as PlaceCategory | null)
-        }
-        className={`appearance-none rounded px-2 py-1 pr-6 font-mono text-[10px] font-semibold uppercase tracking-wide outline-none ring-1 ring-zinc-200/70 ${
-          meta ? meta.cls : "bg-zinc-500/[0.06] text-zinc-700"
-        }`}
-      >
-        <option value="">Uncategorized</option>
-        {Object.keys(CATEGORY_META).map((k) => (
-          <option key={k} value={k}>
-            {k}
-          </option>
-        ))}
-      </select>
-      <ChevronDown
-        className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500/70"
-        strokeWidth={1.5}
-      />
+      <CategorySelect value={category} onChange={onChange} />
     </div>
   );
 }
@@ -185,7 +171,7 @@ function PlaceCard({
         <div className="flex items-center justify-between gap-2">
           <CategoryBadge category={place.category} onChange={onUpdateCategory} />
         </div>
-        <h3 className="mt-3 text-balance text-[16px] font-bold leading-snug tracking-tight text-zinc-900 sm:text-[17px]">
+        <h3 className="mt-3 text-balance text-[16px] font-semibold leading-snug tracking-tight text-zinc-900 sm:text-[17px]">
           {place.title}
         </h3>
         <p className="mt-1.5 text-sm text-zinc-500">{place.location}</p>
@@ -199,11 +185,13 @@ function PlaceRow({
   onOpen,
   onDelete,
   onUpdateCategory,
+  compact = false,
 }: {
   place: PlaceCardData;
   onOpen: () => void;
   onDelete: () => void;
   onUpdateCategory: (next: PlaceCategory | null) => void;
+  compact?: boolean;
 }) {
   return (
     <div
@@ -215,7 +203,11 @@ function PlaceRow({
       }}
       className="group flex cursor-pointer items-center gap-4 rounded-2xl border border-zinc-100 bg-white p-3 shadow-[0_2px_14px_-8px_rgba(15,23,42,0.12),0_1px_2px_-1px_rgba(15,23,42,0.04)] transition-[box-shadow,transform] duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_18px_44px_-22px_rgba(15,23,42,0.22)]"
     >
-      <div className="h-[60px] w-[60px] shrink-0 overflow-hidden rounded-xl bg-zinc-100">
+      <div
+        className={`shrink-0 overflow-hidden rounded-xl bg-zinc-100 ${
+          compact ? "h-12 w-12 sm:h-[60px] sm:w-[60px]" : "h-[60px] w-[60px]"
+        } ${compact ? "order-2 sm:order-none" : ""}`}
+      >
         {place.photoReference ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -230,7 +222,7 @@ function PlaceRow({
         )}
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 ${compact ? "order-1 sm:order-none" : ""}`}>
         <div className="flex items-center justify-between gap-3">
           <p className="truncate text-sm font-semibold tracking-tight text-zinc-900">
             {place.title}
@@ -266,6 +258,8 @@ function toCardData(place: PlaceWithTrip): PlaceCardData {
     title: place.title,
     location,
     category: place.category ?? null,
+    subLocation: place.subLocation?.trim() || null,
+    description: place.description?.trim() || null,
     photoReference: place.photoReference ?? null,
     sourceUrl: place.sourceUrl ?? null,
   };
@@ -301,6 +295,7 @@ export function CollectionLanding({
   const cards = places.map(toCardData);
   const [openPlaceId, setOpenPlaceId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [linkShareOpen, setLinkShareOpen] = useState(false);
   const [deletePlaceId, setDeletePlaceId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [optimisticallyHiddenIds, setOptimisticallyHiddenIds] = useState<Set<string>>(
@@ -323,6 +318,7 @@ export function CollectionLanding({
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const [moveMenuOpenForId, setMoveMenuOpenForId] = useState<string | null>(null);
   const [moveQuery, setMoveQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const emptyTrip =
     isTripView && !loading && !error && cards.length === 0;
   const emptyLibrary =
@@ -347,8 +343,24 @@ export function CollectionLanding({
       });
   }, [cards, optimisticallyHiddenIds, optimisticOverrides, places]);
 
+  const filteredCards = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return visibleCards;
+    return visibleCards.filter((c) => {
+      const hay = [
+        c.title,
+        c.description ?? "",
+        c.subLocation ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [visibleCards, searchQuery]);
+
   useEffect(() => {
     if (!isTripView || !selectedTripId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTripAccess({ isShared: false, canEdit: true, sharedWithText: null });
       return;
     }
@@ -358,18 +370,26 @@ export function CollectionLanding({
         const res = await fetch(`/api/trips/${selectedTripId}/collaborators`, {
           cache: "no-store",
         });
-        const json = (await res.json()) as any;
+        const json = (await res.json()) as {
+          error?: string;
+          viewer?: { isOwner?: boolean };
+          collaborators?: Array<{
+            role?: "EDITOR" | "VIEWER";
+            user?: { id?: string };
+          }>;
+        };
         if (!res.ok) throw new Error(json.error || "Failed");
         const isOwner = json.viewer?.isOwner === true;
         const collaborator = (json.collaborators ?? []).find(
-          (c: any) => c.user?.id && c.user.id === session?.user?.id,
+          (c) => c.user?.id && c.user.id === session?.user?.id,
         );
-        const role = collaborator?.role as ("EDITOR" | "VIEWER" | undefined);
+        const role = collaborator?.role;
         const canEdit = isOwner || role === "EDITOR";
         const count = (json.collaborators ?? []).length;
         const sharedWithText =
           count > 0 ? `Shared with ${count} ${count === 1 ? "person" : "people"}` : null;
         if (!cancelled) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setTripAccess({
             isShared: count > 0,
             canEdit,
@@ -378,6 +398,7 @@ export function CollectionLanding({
         }
       } catch {
         if (!cancelled) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setTripAccess({ isShared: false, canEdit: true, sharedWithText: null });
         }
       }
@@ -390,16 +411,16 @@ export function CollectionLanding({
   const grouped = useMemo(() => {
     if (!isTripView) return null;
     const groups = new Map<string, PlaceCardData[]>();
-    for (const c of visibleCards) {
+    for (const c of filteredCards) {
       const key = c.category ?? "Uncategorized";
       groups.set(key, [...(groups.get(key) ?? []), c]);
     }
     return [...groups.entries()];
-  }, [visibleCards, isTripView]);
+  }, [filteredCards, isTripView]);
 
   const displayedCards = useMemo(
-    () => visibleCards.slice(0, visibleCount),
-    [visibleCards, visibleCount],
+    () => filteredCards.slice(0, visibleCount),
+    [filteredCards, visibleCount],
   );
 
   const groupedDisplayedCards = useMemo(() => {
@@ -411,6 +432,28 @@ export function CollectionLanding({
     return [...groups.entries()];
   }, [displayedCards]);
 
+  const groupedDisplayedCardsWithSubLocation = useMemo(() => {
+    return groupedDisplayedCards.map(([cat, items]) => {
+      const subs = new Map<string, PlaceCardData[]>();
+      const hasAnyTagged = items.some((it) => Boolean(it.subLocation?.trim()));
+      for (const it of items) {
+        const key = it.subLocation?.trim() ? it.subLocation.trim() : "General";
+        subs.set(key, [...(subs.get(key) ?? []), it]);
+      }
+      if (!hasAnyTagged) {
+        // No sub-location tags at all: list directly under category (no "General" header).
+        return [cat, [["", items]] as Array<[string, PlaceCardData[]]>] as const;
+      }
+      // Put General first, then alphabetical.
+      const entries = [...subs.entries()].sort(([a], [b]) => {
+        if (a === "General" && b !== "General") return -1;
+        if (b === "General" && a !== "General") return 1;
+        return a.localeCompare(b);
+      });
+      return [cat, entries] as const;
+    });
+  }, [groupedDisplayedCards]);
+
   const listGroups = useMemo(() => {
     const groups = new Map<string, PlaceCardData[]>();
     for (const c of displayedCards) {
@@ -420,14 +463,34 @@ export function CollectionLanding({
     return [...groups.entries()];
   }, [displayedCards]);
 
+  const listGroupsWithSubLocation = useMemo(() => {
+    return listGroups.map(([cat, items]) => {
+      const subs = new Map<string, PlaceCardData[]>();
+      const hasAnyTagged = items.some((it) => Boolean(it.subLocation?.trim()));
+      for (const it of items) {
+        const key = it.subLocation?.trim() ? it.subLocation.trim() : "General";
+        subs.set(key, [...(subs.get(key) ?? []), it]);
+      }
+      if (!hasAnyTagged) {
+        return [cat, [["", items]] as Array<[string, PlaceCardData[]]>] as const;
+      }
+      const entries = [...subs.entries()].sort(([a], [b]) => {
+        if (a === "General" && b !== "General") return -1;
+        if (b === "General" && a !== "General") return 1;
+        return a.localeCompare(b);
+      });
+      return [cat, entries] as const;
+    });
+  }, [listGroups]);
+
   const listGroupCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const c of visibleCards) {
+    for (const c of filteredCards) {
       const key = c.category ?? "Uncategorized";
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return counts;
-  }, [visibleCards]);
+  }, [filteredCards]);
 
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
 
@@ -440,16 +503,20 @@ export function CollectionLanding({
     try {
       const raw = window.localStorage.getItem(key);
       if (!raw) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCollapsedCats({});
         return;
       }
       const parsed = JSON.parse(raw) as unknown;
       if (parsed && typeof parsed === "object") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCollapsedCats(parsed as Record<string, boolean>);
       } else {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCollapsedCats({});
       }
     } catch {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCollapsedCats({});
     }
   }, [collapseScope]);
@@ -467,9 +534,10 @@ export function CollectionLanding({
     setCollapsedCats((prev) => ({ ...prev, [cat]: !prev[cat] }));
   }
 
-  const canLoadMore = visibleCards.length > visibleCount;
+  const canLoadMore = filteredCards.length > visibleCount;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleCount(pageSize);
   }, [pageSize, mode, selectedTripId]);
 
@@ -480,13 +548,17 @@ export function CollectionLanding({
     try {
       const raw = window.localStorage.getItem(key);
       if (raw === "grid" || raw === "list") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setView(raw);
       } else {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setView("grid");
       }
     } catch {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setView("grid");
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleCount(pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTripId, mode, isTripView]);
@@ -536,6 +608,7 @@ export function CollectionLanding({
     notes: string;
     category: PlaceCategory | null;
     tripId: string | null;
+    subLocation: string | null;
   }) {
     const prevOverride = optimisticOverrides.get(input.id);
     setOptimisticOverrides((prev) => {
@@ -545,6 +618,7 @@ export function CollectionLanding({
         notes: input.notes,
         category: input.category,
         tripId: input.tripId,
+        subLocation: input.subLocation,
       });
       return next;
     });
@@ -558,6 +632,7 @@ export function CollectionLanding({
           notes: input.notes,
           category: input.category,
           tripId: input.tripId,
+          subLocation: input.subLocation,
         }),
       });
       const json = (await res.json()) as { error?: string; place?: PlaceWithTrip };
@@ -630,7 +705,23 @@ export function CollectionLanding({
         className="flex min-h-0 flex-1 flex-col px-4 pb-6 pt-1 transition-opacity duration-150 ease-out sm:px-6 sm:pb-8 sm:pt-2 lg:px-8 lg:pt-4"
       >
         <div className="mx-auto w-full max-w-6xl">
-        <div className="mb-4 lg:mb-5">
+        <div className="sticky top-0 z-40 -mx-4 mb-2 flex items-center justify-between border-b border-zinc-200/70 bg-[#FAF9F6]/92 px-4 pb-2 pt-[max(0.6rem,env(safe-area-inset-top,0px))] backdrop-blur-md sm:-mx-6 sm:px-6 lg:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.history.length > 1) window.history.back();
+              else onNavigateLibrary();
+            }}
+            className="touch-manipulation inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-zinc-700 active:bg-zinc-100/70"
+            aria-label="Back"
+          >
+            <ArrowLeft className="h-5 w-5" strokeWidth={1.5} aria-hidden />
+          </button>
+          <div className="flex-1" aria-hidden />
+          <div className="min-h-11 min-w-11" aria-hidden />
+        </div>
+
+        <div className="mb-4 hidden lg:mb-5 lg:block">
           <BreadcrumbNav
             segments={crumbs}
             onNavigateLibrary={onNavigateLibrary}
@@ -638,7 +729,7 @@ export function CollectionLanding({
         </div>
 
         {isTripView && selectedTrip && (
-          <div className="mb-6 overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-[0_2px_16px_-6px_rgba(15,23,42,0.10)]">
+          <div className="mb-4 overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-[0_2px_16px_-6px_rgba(15,23,42,0.10)]">
             <div className="relative h-40 w-full sm:h-48">
               {selectedTripCoverPhotoRef ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -650,27 +741,12 @@ export function CollectionLanding({
               ) : (
                 <div className="h-full w-full bg-gradient-to-br from-zinc-100 to-zinc-50" />
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-              <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/75">
-                  Trip
-                </p>
-                <p className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-                  {selectedTrip.name}
-                </p>
-                <p className="mt-1.5 max-w-2xl text-sm text-white/90 [text-shadow:0_1px_2px_rgba(0,0,0,0.35)]">
-                  {visibleCards.length} items saved in {selectedTrip.name}
-                </p>
-              </div>
             </div>
           </div>
         )}
 
         <div className="text-center lg:text-left">
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">
-            {isTripView ? "Trip" : "Inbox"}
-          </p>
-          <div className="mt-1.5 flex flex-col items-center gap-3 sm:mt-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="mt-1 flex flex-col items-center gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h1 className="text-balance text-2xl font-semibold leading-tight tracking-tight text-zinc-900 sm:text-3xl">
               {isTripView && selectedTrip ? selectedTrip.name : <>Inbox</>}
             </h1>
@@ -702,8 +778,10 @@ export function CollectionLanding({
               {isTripView && selectedTripId && (
                 <button
                   type="button"
-                  onClick={() => setShareOpen(true)}
-                  className="touch-manipulation inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200/80 bg-white/90 px-4 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm hover:bg-white"
+                  onClick={() => {
+                    setLinkShareOpen(true);
+                  }}
+                  className="touch-manipulation inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200/70 bg-transparent px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-white/70"
                 >
                   <Share2 className="h-4 w-4" strokeWidth={1.5} aria-hidden />
                   Share
@@ -716,19 +794,6 @@ export function CollectionLanding({
               ? "Items in this trip — add from TikTok, Instagram, or your notes."
               : "All new extractions land here first. Review, then move into trips."}
           </p>
-
-          <button
-            type="button"
-            onClick={onAddPlace}
-            className="group mt-5 hidden min-h-[48px] min-w-[200px] touch-manipulation items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#138a82] via-[var(--primary)] to-[#0a4540] px-8 py-3 text-[15px] font-medium text-[var(--primary-foreground)] shadow-[0_1px_0_0_rgba(255,255,255,0.12)_inset,0_8px_24px_-8px_rgba(15,92,86,0.45),0_2px_6px_-2px_rgba(15,23,42,0.06)] transition-[transform,filter] duration-200 hover:brightness-[1.05] active:scale-[0.99] md:inline-flex"
-          >
-            <Plus
-              className="h-4 w-4 opacity-95"
-              strokeWidth={2}
-              aria-hidden
-            />
-              Add New Item
-          </button>
         </div>
 
         {error && (
@@ -750,37 +815,63 @@ export function CollectionLanding({
                 {isTripView ? "Items in this trip" : "Unsorted items"}
               </h2>
               <p className="text-xs text-zinc-500">
-                {cards.length} saved
+                {filteredCards.length} saved
               </p>
             </div>
 
-            {emptyTrip && (
-              <div className="rounded-xl border border-dashed border-zinc-200/90 bg-white/60 px-6 py-14 text-center text-sm text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                This trip is empty. Start adding places from TikTok, IG, or text!
+            <div className="mb-4">
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+                  strokeWidth={1.5}
+                  aria-hidden
+                />
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search title, description, or sub-location…"
+                  className="min-h-11 w-full rounded-2xl border border-zinc-200/70 bg-white/80 py-3 pl-11 pr-4 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none transition-shadow focus:border-zinc-300 focus:bg-white focus:shadow-[0_0_0_3px_var(--primary-muted)]"
+                />
               </div>
+            </div>
+
+            {emptyTrip && (
+              <button
+                type="button"
+                onClick={onAddPlace}
+                className="w-full rounded-xl border border-dashed border-zinc-200/90 bg-white/60 px-6 py-14 text-center text-sm text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:bg-white/75"
+              >
+                This trip is empty. Click to add your first item.
+              </button>
             )}
 
             {emptyLibrary && (
-              <div className="rounded-xl border border-dashed border-zinc-200/90 bg-white/60 px-6 py-14 text-center text-sm text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                Inbox is empty. Start adding places from TikTok, IG, or text!
-              </div>
+              <button
+                type="button"
+                onClick={onAddPlace}
+                className="w-full rounded-xl border border-dashed border-zinc-200/90 bg-white/60 px-6 py-14 text-center text-sm text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:bg-white/75"
+              >
+                Inbox is empty. Click to add your first item.
+              </button>
             )}
 
             {!emptyTrip && !emptyLibrary && (
               <>
                 {view === "list" ? (
                   <div className="space-y-4">
-                    {listGroups.map(([cat, items]) => {
+                    {listGroupsWithSubLocation.map(([cat, subGroups]) => {
                       const meta = CATEGORY_META[cat] ?? null;
                       const label = meta?.label ?? cat;
-                      const count = listGroupCounts.get(cat) ?? items.length;
+                      const count =
+                        listGroupCounts.get(cat) ??
+                        subGroups.reduce((acc, [, its]) => acc + its.length, 0);
                       const collapsed = Boolean(collapsedCats[cat]);
                       return (
                         <section key={cat}>
                           <button
                             type="button"
                             onClick={() => toggleCategory(cat)}
-                            className="mb-2 flex w-full items-center justify-between rounded-xl border border-zinc-100 bg-white/70 px-3 py-2 text-left text-xs font-semibold text-zinc-700 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset] hover:bg-white/80"
+                            className="sticky top-0 z-30 mb-2 flex w-full items-center justify-between rounded-xl border border-zinc-100 bg-white/90 px-3 py-2 text-left text-xs font-semibold text-zinc-700 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset] backdrop-blur hover:bg-white"
                             aria-expanded={!collapsed}
                           >
                             <span className="flex items-center gap-2">
@@ -800,15 +891,24 @@ export function CollectionLanding({
                               collapsed ? "max-h-0 opacity-0" : "max-h-[9999px] opacity-100"
                             }`}
                           >
-                            <div className="space-y-3 pt-0.5">
-                              {items.map((place) => (
-                                <PlaceRow
-                                  key={place.id}
-                                  place={place}
-                                  onOpen={() => setOpenPlaceId(place.id)}
-                                  onDelete={() => setDeletePlaceId(place.id)}
-                                  onUpdateCategory={(next) => void updateCategory(place.id, next)}
-                                />
+                            <div className="space-y-4 pt-0.5">
+                              {subGroups.map(([sub, items]) => (
+                                <div key={sub}>
+                                  <div className="space-y-3">
+                                    {items.map((place) => (
+                                      <PlaceRow
+                                        key={place.id}
+                                        place={place}
+                                        compact={count > 3}
+                                        onOpen={() => setOpenPlaceId(place.id)}
+                                        onDelete={() => setDeletePlaceId(place.id)}
+                                        onUpdateCategory={(next) =>
+                                          void updateCategory(place.id, next)
+                                        }
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
                               ))}
                             </div>
                           </div>
@@ -831,18 +931,20 @@ export function CollectionLanding({
                   </div>
                 ) : (
                   <div className="space-y-10">
-                    {groupedDisplayedCards.map(([cat, items]) => {
+                    {groupedDisplayedCardsWithSubLocation.map(([cat, subGroups]) => {
                       const meta = CATEGORY_META[cat] ?? null;
                       const Icon = meta?.Icon ?? MapPin;
                       const label = meta?.label ?? cat;
-                      const count = listGroupCounts.get(cat) ?? items.length;
+                      const count =
+                        listGroupCounts.get(cat) ??
+                        subGroups.reduce((acc, [, its]) => acc + its.length, 0);
                       const collapsed = Boolean(collapsedCats[cat]);
                       return (
                         <section key={cat}>
                           <button
                             type="button"
                             onClick={() => toggleCategory(cat)}
-                            className="mb-4 flex w-full items-center justify-between rounded-2xl border border-zinc-100 bg-white/70 px-3 py-2.5 text-left shadow-[0_1px_0_rgba(255,255,255,0.8)_inset] hover:bg-white/80"
+                            className="sticky top-0 z-30 mb-4 flex w-full items-center justify-between rounded-2xl border border-zinc-100 bg-white/90 px-3 py-2.5 text-left shadow-[0_1px_0_rgba(255,255,255,0.8)_inset] backdrop-blur hover:bg-white"
                             aria-expanded={!collapsed}
                           >
                             <span className="flex items-center gap-2">
@@ -863,27 +965,33 @@ export function CollectionLanding({
                               collapsed ? "max-h-0 opacity-0" : "max-h-[9999px] opacity-100"
                             }`}
                           >
-                            <div className="grid grid-cols-1 gap-6 pt-0.5 sm:grid-cols-2 sm:gap-7 lg:grid-cols-3 lg:gap-8 xl:grid-cols-4">
-                              {items.map((place) => (
-                                <PlaceCard
-                                  key={place.id}
-                                  place={place}
-                                  draggable={mode === "inbox"}
-                                  onOpen={() => setOpenPlaceId(place.id)}
-                                  onDelete={async () => {
-                                    setDeletePlaceId(place.id);
-                                  }}
-                                  onMoveToTrip={
-                                    mode === "inbox"
-                                      ? (id) => {
-                                          setMoveMenuOpenForId(id);
+                            <div className="space-y-6 pt-0.5">
+                              {subGroups.map(([sub, items]) => (
+                                <div key={sub}>
+                                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-7 lg:grid-cols-3 lg:gap-8 xl:grid-cols-4">
+                                    {items.map((place) => (
+                                      <PlaceCard
+                                        key={place.id}
+                                        place={place}
+                                        draggable={mode === "inbox"}
+                                        onOpen={() => setOpenPlaceId(place.id)}
+                                        onDelete={async () => {
+                                          setDeletePlaceId(place.id);
+                                        }}
+                                        onMoveToTrip={
+                                          mode === "inbox"
+                                            ? (id) => {
+                                                setMoveMenuOpenForId(id);
+                                              }
+                                            : undefined
                                         }
-                                      : undefined
-                                  }
-                                  onUpdateCategory={async (next) => {
-                                    await updateCategory(place.id, next);
-                                  }}
-                                />
+                                        onUpdateCategory={async (next) => {
+                                          await updateCategory(place.id, next);
+                                        }}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
                               ))}
                             </div>
                           </div>
@@ -928,6 +1036,14 @@ export function CollectionLanding({
           await deletePlace(id);
         }}
       />
+      {selectedTripId && selectedTrip && (
+        <TripLinkShareModal
+          open={linkShareOpen}
+          tripId={selectedTripId}
+          tripName={selectedTrip.name}
+          onClose={() => setLinkShareOpen(false)}
+        />
+      )}
       {selectedTripId && (
         <TripShareModal
           open={shareOpen}
@@ -938,7 +1054,8 @@ export function CollectionLanding({
       <button
         type="button"
         onClick={onAddPlace}
-        className="fixed bottom-[88px] right-5 z-40 flex h-14 w-14 touch-manipulation items-center justify-center rounded-full bg-[var(--primary)] text-white shadow-[0_16px_48px_-20px_rgba(15,92,86,0.65)] transition-transform duration-300 hover:-translate-y-1 active:scale-95 lg:hidden"
+        title="Add Item"
+        className="fixed bottom-[88px] right-5 z-40 flex h-14 w-14 touch-manipulation items-center justify-center rounded-full bg-[var(--primary)] text-white shadow-[0_16px_48px_-20px_rgba(15,92,86,0.65)] transition-transform duration-300 hover:-translate-y-1 active:scale-95 lg:bottom-6 lg:right-6"
         aria-label="Add New Item"
       >
         <Plus className="h-6 w-6" strokeWidth={2} aria-hidden />

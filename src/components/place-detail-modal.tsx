@@ -5,6 +5,7 @@ import { ExternalLink, LoaderCircle, MapPin, Trash2, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { toast } from "sonner";
+import { CategorySelect } from "@/components/category-select";
 
 export type PlaceWithTrip = Place & { trip: Trip | null };
 
@@ -20,6 +21,7 @@ type PlaceDetailModalProps = {
     notes: string;
     category: PlaceCategory | null;
     tripId: string | null;
+    subLocation: string | null;
   }) => Promise<void>;
   onRequestDelete?: (id: string) => Promise<void>;
   onClose: () => void;
@@ -27,19 +29,7 @@ type PlaceDetailModalProps = {
   onUpdated: (next: PlaceWithTrip) => void;
 };
 
-const CATEGORY_OPTIONS: PlaceCategory[] = [
-  "HOTEL",
-  "RESTAURANT",
-  "VIEWPOINT",
-  "ACTIVITY",
-  "TRANSPORT",
-  // legacy values remain in DB; keep available for now
-  "Food",
-  "Stay",
-  "Nature",
-  "Culture",
-  "Viewpoint",
-];
+// Category dropdown is rendered via CategorySelect.
 
 export function PlaceDetailModal({
   open,
@@ -58,18 +48,60 @@ export function PlaceDetailModal({
   const [notes, setNotes] = useState("");
   const [category, setCategory] = useState<PlaceCategory | null>(null);
   const [tripId, setTripId] = useState<string | null>(null);
+  const [subLocation, setSubLocation] = useState<string>("");
+  const [subLocationSuggestions, setSubLocationSuggestions] = useState<string[]>(
+    [],
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   useEffect(() => {
     if (!open || !place) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDescription(place.description ?? "");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNotes(place.notes ?? "");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCategory(place.category ?? null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTripId(place.tripId ?? null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSubLocation(place.subLocation ?? "");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
   }, [open, place]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!place?.tripId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSubLocationSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/places?tripId=${encodeURIComponent(place.tripId!)}`, {
+          cache: "no-store",
+        });
+        const json = (await res.json()) as { places?: Array<{ subLocation?: string | null }> };
+        if (!res.ok) return;
+        const uniq = new Set<string>();
+        for (const p of json.places ?? []) {
+          const v = (p.subLocation ?? "").trim();
+          if (v) uniq.add(v);
+        }
+        const next = [...uniq].sort((a, b) => a.localeCompare(b));
+        if (!cancelled) setSubLocationSuggestions(next);
+      } catch {
+        if (!cancelled) setSubLocationSuggestions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, place?.tripId]);
 
   const mapsUrl = useMemo(() => {
     if (!place) return null;
@@ -94,6 +126,7 @@ export function PlaceDetailModal({
           notes,
           category,
           tripId,
+          subLocation: subLocation.trim() || null,
         });
         onClose();
       } catch (e) {
@@ -116,6 +149,7 @@ export function PlaceDetailModal({
           notes,
           category,
           tripId,
+          subLocation: subLocation.trim() || null,
         }),
       });
       const data = await res.json();
@@ -159,7 +193,7 @@ export function PlaceDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end">
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-stretch sm:justify-end">
       <button
         type="button"
         className="absolute inset-0 bg-zinc-900/20 backdrop-blur-[8px]"
@@ -167,12 +201,15 @@ export function PlaceDetailModal({
         onClick={onClose}
       />
       <aside
-        className="relative h-full w-full max-w-xl border-l border-zinc-100 bg-[#FAF9F6] shadow-[0_0_0_1px_rgba(15,23,42,0.03),-16px_0_60px_-20px_rgba(15,23,42,0.25)]"
+        className="relative flex max-h-[min(92dvh,820px)] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl border border-zinc-100 bg-[#FAF9F6] shadow-[0_-16px_60px_-20px_rgba(15,23,42,0.25)] sm:h-full sm:max-h-none sm:rounded-none sm:border-l sm:border-t-0 sm:shadow-[0_0_0_1px_rgba(15,23,42,0.03),-16px_0_60px_-20px_rgba(15,23,42,0.25)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
+        <div className="flex items-center justify-center pt-3 sm:hidden">
+          <div className="h-1.5 w-12 rounded-full bg-zinc-300/70" aria-hidden />
+        </div>
+        <div className="shrink-0 flex items-center justify-between border-b border-zinc-100 px-5 py-4">
           <div className="min-w-0">
             <p id={titleId} className="truncate text-sm font-semibold tracking-tight text-zinc-900">
               {place.title}
@@ -188,7 +225,7 @@ export function PlaceDetailModal({
           </div>
           <button
             type="button"
-            className="touch-manipulation flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 hover:bg-zinc-100"
+            className="touch-manipulation flex h-12 w-12 items-center justify-center rounded-2xl text-zinc-500 hover:bg-zinc-100"
             aria-label="Close"
             onClick={onClose}
           >
@@ -196,7 +233,7 @@ export function PlaceDetailModal({
           </button>
         </div>
 
-        <div className="h-[220px] w-full bg-zinc-100">
+        <div className="shrink-0 h-[200px] w-full bg-zinc-100 sm:h-[220px]">
           {place.photoReference ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -209,7 +246,8 @@ export function PlaceDetailModal({
           )}
         </div>
 
-        <div className="space-y-4 px-5 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div className="space-y-4 pb-4">
           <div className="flex flex-wrap gap-2">
             {place.sourceUrl && (
               <a
@@ -267,21 +305,31 @@ export function PlaceDetailModal({
             <span className="mb-1.5 block text-xs font-medium text-zinc-500">
               Category
             </span>
-            <select
-              value={category ?? ""}
-              onChange={(e) =>
-                setCategory((e.target.value || null) as PlaceCategory | null)
-              }
-              disabled={!canEdit || saving}
-              className="min-h-11 w-full rounded-xl border border-zinc-200/90 bg-white px-3 py-2 text-sm font-medium text-zinc-900 outline-none focus:border-zinc-300 focus:shadow-[0_0_0_3px_rgba(15,92,86,0.12)] disabled:opacity-60"
-            >
-              <option value="">Uncategorized</option>
-              {CATEGORY_OPTIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+            <div className={`${!canEdit || saving ? "opacity-60 pointer-events-none" : ""}`}>
+              <CategorySelect value={category} onChange={setCategory} className="w-full" />
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-zinc-500">
+              Sub-location
+              <span className="ml-1 text-[11px] font-normal text-zinc-400">
+                (Optional)
+              </span>
+            </span>
+            <datalist id="subLocation-suggestions-detail">
+              {subLocationSuggestions.map((s) => (
+                <option key={s} value={s} />
               ))}
-            </select>
+            </datalist>
+            <input
+              value={subLocation}
+              onChange={(e) => setSubLocation(e.target.value)}
+              disabled={!canEdit || saving}
+              list={subLocationSuggestions.length > 0 ? "subLocation-suggestions-detail" : undefined}
+              placeholder="e.g., Koh Samui"
+              className="min-h-11 w-full rounded-xl border border-zinc-200/90 bg-white px-3 py-2 text-sm font-medium text-zinc-900 outline-none focus:border-zinc-300 focus:shadow-[0_0_0_3px_rgba(15,92,86,0.12)] disabled:opacity-60"
+            />
           </label>
 
           <label className="block">
@@ -311,13 +359,16 @@ export function PlaceDetailModal({
             />
           </label>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          </div>
+        </div>
 
+        <div className="shrink-0 border-t border-zinc-100 bg-[#FAF9F6]/95 px-5 py-4 backdrop-blur">
+          {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
           <button
             type="button"
             onClick={save}
             disabled={saving || !canEdit}
-            className="touch-manipulation inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_-12px_rgba(15,92,86,0.55)] disabled:opacity-60"
+            className="touch-manipulation inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_-12px_rgba(15,92,86,0.55)] disabled:opacity-60"
           >
             {!canEdit ? (
               "Read-only"
@@ -330,6 +381,7 @@ export function PlaceDetailModal({
               "Save changes"
             )}
           </button>
+          <div className="h-[max(0.25rem,env(safe-area-inset-bottom,0px))]" />
         </div>
       </aside>
       <ConfirmDialog

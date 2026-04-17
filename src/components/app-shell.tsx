@@ -1,7 +1,7 @@
 "use client";
 
 import type { Trip } from "@prisma/client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddPlaceModal } from "@/components/add-place-modal";
 import { BottomNav } from "@/components/bottom-nav";
 import {
@@ -9,13 +9,12 @@ import {
   type PlaceWithTrip,
 } from "@/components/collection-landing";
 import { MyTripsLanding } from "@/components/my-trips-landing";
-import { MobileHeader } from "@/components/mobile-header";
-import { MobileTripsSheet } from "@/components/mobile-trips-sheet";
 import type { NavId } from "@/components/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { CreateTripModal } from "@/components/create-trip-modal";
 import { TripPlannerPanel } from "@/components/trip-planner-panel";
 import { Toast } from "@/components/toast";
+import { Plus } from "lucide-react";
 
 function PlaceholderPanel({
   title,
@@ -45,9 +44,9 @@ export function AppShell() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [createTripOpen, setCreateTripOpen] = useState(false);
-  const [mobileTripsOpen, setMobileTripsOpen] = useState(false);
-  const [recentTripIds, setRecentTripIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const didInitHistory = useRef(false);
+  const suppressNextPush = useRef(false);
 
   const refreshData = useCallback(async () => {
     try {
@@ -73,33 +72,46 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshData();
   }, [refreshData]);
 
+  // Restore state on browser back/forward (mobile back gesture).
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("recentTripIds");
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) {
-        setRecentTripIds(parsed.filter((x) => typeof x === "string"));
-      }
-    } catch {
-      // ignore
-    }
+    const onPop = (e: PopStateEvent) => {
+      const st = (e.state ?? null) as
+        | { active?: NavId; selectedTripId?: string | null }
+        | null;
+      if (!st?.active) return;
+      suppressNextPush.current = true;
+      setActive(st.active);
+      setSelectedTripId(st.selectedTripId ?? null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  function bumpRecentTrip(tripId: string) {
-    setRecentTripIds((prev) => {
-      const next = [tripId, ...prev.filter((id) => id !== tripId)].slice(0, 5);
+  // Push nav state to history so Back works naturally.
+  useEffect(() => {
+    if (!didInitHistory.current) {
+      didInitHistory.current = true;
       try {
-        window.localStorage.setItem("recentTripIds", JSON.stringify(next));
+        window.history.replaceState({ active, selectedTripId }, "");
       } catch {
         // ignore
       }
-      return next;
-    });
-  }
+      return;
+    }
+    if (suppressNextPush.current) {
+      suppressNextPush.current = false;
+      return;
+    }
+    try {
+      window.history.pushState({ active, selectedTripId }, "");
+    } catch {
+      // ignore
+    }
+  }, [active, selectedTripId]);
 
   const selectedTrip = useMemo(
     () => trips.find((t) => t.id === selectedTripId) ?? null,
@@ -131,16 +143,19 @@ export function AppShell() {
     for (const p of places) {
       if (!p.tripId) continue;
       if (refs[p.tripId]) continue;
-      const ref = (p as any).photoReference as string | null | undefined;
+      const ref = p.photoReference;
       if (ref) refs[p.tripId] = ref;
     }
     return refs;
   }, [places]);
 
   const recentTrips = useMemo(() => {
-    const byId = new Map(trips.map((t) => [t.id, t]));
-    return recentTripIds.map((id) => byId.get(id)).filter(Boolean) as Trip[];
-  }, [recentTripIds, trips]);
+    const dateKey = (t: Trip) => {
+      const d = t.startDate ?? t.endDate ?? t.createdAt;
+      return d instanceof Date ? d.getTime() : new Date(d).getTime();
+    };
+    return [...trips].sort((a, b) => dateKey(b) - dateKey(a)).slice(0, 5);
+  }, [trips]);
 
   function handleNavSelect(id: NavId) {
     setActive(id);
@@ -159,13 +174,11 @@ export function AppShell() {
   function handleSelectTrip(tripId: string) {
     setActive("trip");
     setSelectedTripId(tripId);
-    bumpRecentTrip(tripId);
   }
 
   function handleTripCreated(trip: { id: string }) {
     setActive("trip");
     setSelectedTripId(trip.id);
-    bumpRecentTrip(trip.id);
     void refreshData();
   }
 
@@ -189,10 +202,6 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-[#FAF9F6] lg:flex-row">
-      <MobileHeader
-        onAdd={() => setAddPlaceOpen(true)}
-        onOpenTrips={() => setMobileTripsOpen(true)}
-      />
       <Sidebar
         active={active}
         onSelect={handleNavSelect}
@@ -203,7 +212,7 @@ export function AppShell() {
         onDropPlaceToTrip={movePlaceToTrip}
       />
 
-      <div className="min-h-0 min-w-0 flex-1 bg-[#FAF9F6] pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] pt-[calc(4.5rem+env(safe-area-inset-top,0px))] transition-[opacity] duration-150 ease-out lg:pb-0 lg:pt-0">
+      <div className="min-h-0 min-w-0 flex-1 bg-[#FAF9F6] pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)] transition-[opacity] duration-150 ease-out lg:pb-0 lg:pt-0">
         {active === "trips" && (
           <MyTripsLanding
             trips={trips}
@@ -244,18 +253,17 @@ export function AppShell() {
       </div>
 
       <BottomNav active={active} onSelect={handleNavSelect} onComingSoon={showComingSoon} />
-      <MobileTripsSheet
-        open={mobileTripsOpen}
-        onClose={() => setMobileTripsOpen(false)}
-        trips={trips}
-        selectedTripId={selectedTripId}
-        onSelectLibrary={() => {
-          handleNavigateLibrary();
-        }}
-        onSelectTrip={(id) => {
-          handleSelectTrip(id);
-        }}
-      />
+      {active === "trips" && (
+        <button
+          type="button"
+          onClick={() => setCreateTripOpen(true)}
+          title="Add Trip"
+          className="fixed bottom-[88px] right-5 z-40 flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-[var(--primary)] text-white shadow-[0_16px_48px_-20px_rgba(15,92,86,0.65)] transition-transform duration-300 hover:-translate-y-1 active:scale-95 lg:bottom-6 lg:right-6"
+          aria-label="Create new trip"
+        >
+          <Plus className="h-6 w-6" strokeWidth={2} aria-hidden />
+        </button>
+      )}
       <AddPlaceModal
         open={addPlaceOpen}
         onClose={() => setAddPlaceOpen(false)}
