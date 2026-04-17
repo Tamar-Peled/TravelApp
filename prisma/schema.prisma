@@ -1,0 +1,158 @@
+// TripCollaborator replaces any prior SharedWith-style relation on Trip.
+// Permission model: Trip.ownerId is the OWNER. Collaborators use Role (EDITOR | VIEWER).
+// Application logic: only OWNER or EDITOR may add Places to a trip; VIEWER may view map and list only.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// NextAuth Prisma schema (App Router)
+
+enum Role {
+  EDITOR
+  VIEWER
+}
+
+enum PlaceCategory {
+  Food
+  Stay
+  Nature
+  Culture
+  Viewpoint
+  HOTEL
+  RESTAURANT
+  VIEWPOINT
+  ACTIVITY
+  TRANSPORT
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  accounts Account[]
+  sessions Session[]
+
+  ownedTrips      Trip[]               @relation("TripOwner")
+  tripMemberships TripCollaborator[]
+  placesAdded     Place[]              @relation("PlaceAddedBy")
+  placesOwned     Place[]              @relation("PlaceOwner")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Trip {
+  id      String @id @default(cuid())
+  name    String
+  /// Optional breadcrumb segment (e.g. country)
+  region  String?
+  /// Optional breadcrumb segment (e.g. city)
+  city    String?
+  startDate DateTime?
+  endDate   DateTime?
+  userId String @map("ownerId")
+
+  owner           User                 @relation("TripOwner", fields: [userId], references: [id], onDelete: Cascade)
+  collaborators   TripCollaborator[]
+  places          Place[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// Granular sharing: each invited user has exactly one role per trip (not OWNER; owner is Trip.ownerId).
+model TripCollaborator {
+  id     String @id @default(cuid())
+  userId String
+  tripId String
+  role   Role
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([userId])
+  @@index([tripId])
+}
+
+model Place {
+  id          String  @id @default(cuid())
+  userId      String @map("ownerId")
+  tripId      String?
+  title       String
+  description String?
+  notes       String?
+  location    String?
+  city        String?
+  country     String?
+  category    PlaceCategory?
+  sourceUrl   String?
+  tag         String?
+
+  formattedAddress String?
+  latitude         Float?
+  longitude        Float?
+  photoReference   String?
+
+  addedByUserId String?
+  addedBy       User?   @relation("PlaceAddedBy", fields: [addedByUserId], references: [id], onDelete: SetNull)
+
+  owner User @relation("PlaceOwner", fields: [userId], references: [id], onDelete: Cascade)
+  trip  Trip? @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tripId])
+}
