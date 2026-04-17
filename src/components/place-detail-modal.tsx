@@ -11,6 +11,7 @@ export type PlaceWithTrip = Place & { trip: Trip | null };
 type PlaceDetailModalProps = {
   open: boolean;
   place: PlaceWithTrip | null;
+  trips?: Trip[];
   canEdit?: boolean;
   sharedWithText?: string | null;
   onRequestSave?: (input: {
@@ -18,8 +19,9 @@ type PlaceDetailModalProps = {
     description: string;
     notes: string;
     category: PlaceCategory | null;
-  }) => void;
-  onRequestDelete?: (id: string) => void;
+    tripId: string | null;
+  }) => Promise<void>;
+  onRequestDelete?: (id: string) => Promise<void>;
   onClose: () => void;
   onDeleted: () => void;
   onUpdated: (next: PlaceWithTrip) => void;
@@ -42,6 +44,7 @@ const CATEGORY_OPTIONS: PlaceCategory[] = [
 export function PlaceDetailModal({
   open,
   place,
+  trips = [],
   canEdit = true,
   sharedWithText = null,
   onRequestSave,
@@ -54,6 +57,7 @@ export function PlaceDetailModal({
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [category, setCategory] = useState<PlaceCategory | null>(null);
+  const [tripId, setTripId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -63,6 +67,7 @@ export function PlaceDetailModal({
     setDescription(place.description ?? "");
     setNotes(place.notes ?? "");
     setCategory(place.category ?? null);
+    setTripId(place.tripId ?? null);
     setError(null);
   }, [open, place]);
 
@@ -80,12 +85,24 @@ export function PlaceDetailModal({
   async function save() {
     if (!place) return;
     if (onRequestSave) {
-      onRequestSave({
-        id: place.id,
-        description,
-        notes,
-        category,
-      });
+      setSaving(true);
+      setError(null);
+      try {
+        await onRequestSave({
+          id: place.id,
+          description,
+          notes,
+          category,
+          tripId,
+        });
+        onClose();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Save failed";
+        setError(msg);
+        toast.error(msg);
+      } finally {
+        setSaving(false);
+      }
       return;
     }
     setSaving(true);
@@ -98,6 +115,7 @@ export function PlaceDetailModal({
           description,
           notes,
           category,
+          tripId,
         }),
       });
       const data = await res.json();
@@ -116,7 +134,11 @@ export function PlaceDetailModal({
   async function del() {
     if (!place) return;
     if (onRequestDelete) {
-      onRequestDelete(place.id);
+      // Close immediately; perform deletion in background.
+      onClose();
+      void onRequestDelete(place.id).catch((e) => {
+        toast.error(e instanceof Error ? e.message : "Delete failed");
+      });
       return;
     }
     setSaving(true);
@@ -140,7 +162,7 @@ export function PlaceDetailModal({
     <div className="fixed inset-0 z-50 flex items-stretch justify-end">
       <button
         type="button"
-        className="absolute inset-0 bg-zinc-900/20 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-zinc-900/20 backdrop-blur-[8px]"
         aria-label="Close"
         onClick={onClose}
       />
@@ -221,6 +243,25 @@ export function PlaceDetailModal({
               Delete
             </button>
           </div>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-zinc-500">
+              Trip
+            </span>
+            <select
+              value={tripId ?? ""}
+              onChange={(e) => setTripId(e.target.value || null)}
+              disabled={!canEdit || saving}
+              className="min-h-11 w-full rounded-xl border border-zinc-200/90 bg-white px-3 py-2 text-sm font-medium text-zinc-900 outline-none focus:border-zinc-300 focus:shadow-[0_0_0_3px_rgba(15,92,86,0.12)] disabled:opacity-60"
+            >
+              <option value="">Inbox</option>
+              {trips.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-zinc-500">

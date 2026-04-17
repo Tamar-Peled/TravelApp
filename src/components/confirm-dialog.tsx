@@ -56,7 +56,7 @@ export function ConfirmDialog({
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6">
       <button
         type="button"
-        className="absolute inset-0 bg-zinc-900/20 backdrop-blur-[2px] opacity-0 animate-[fadeIn_140ms_ease-out_forwards]"
+        className="absolute inset-0 bg-zinc-900/20 backdrop-blur-[8px] opacity-0 animate-[fadeIn_140ms_ease-out_forwards]"
         aria-label="Close"
         onClick={onCancel}
       />

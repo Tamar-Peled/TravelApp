@@ -218,8 +218,14 @@ export function AppShell() {
         {(active === "inbox" || active === "trip") && (
           <CollectionLanding
             places={visiblePlaces}
+            trips={trips}
             selectedTrip={selectedTrip}
             selectedTripId={selectedTripId}
+            selectedTripCoverPhotoRef={
+              active === "trip" && selectedTripId
+                ? (tripCoverPhotoRefs[selectedTripId] ?? null)
+                : null
+            }
             mode={active === "trip" ? "trip" : "inbox"}
             loading={loading}
             error={loadError}

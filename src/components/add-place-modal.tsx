@@ -325,7 +325,7 @@ export function AddPlaceModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       <button
         type="button"
-        className="absolute inset-0 bg-zinc-900/12 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-zinc-900/12 backdrop-blur-[8px]"
         aria-label="Close dialog"
         onClick={onClose}
       />

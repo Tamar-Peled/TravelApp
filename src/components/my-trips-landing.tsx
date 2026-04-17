@@ -62,6 +62,30 @@ export function MyTripsLanding({
           <div className="mt-8">
             {trips.length === 0 ? (
               <div className="rounded-xl border border-dashed border-zinc-200/90 bg-white/60 px-6 py-14 text-center text-sm text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                <div className="mx-auto mb-5 flex h-28 w-28 items-center justify-center rounded-3xl bg-white shadow-[0_16px_48px_-30px_rgba(15,23,42,0.25)]">
+                  <svg
+                    viewBox="0 0 64 64"
+                    width="56"
+                    height="56"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M18 46c8-6 20-6 28 0"
+                      fill="none"
+                      stroke="#0f5c56"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M20 22c0-4 3-7 7-7h10c4 0 7 3 7 7v18c0 2-1 4-3 5l-7 4c-1 1-3 1-4 0l-7-4c-2-1-3-3-3-5V22z"
+                      fill="#e7f5f3"
+                      stroke="#0f5c56"
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                    />
+                    <circle cx="32" cy="28" r="4" fill="#0f5c56" opacity="0.9" />
+                  </svg>
+                </div>
                 <p className="text-zinc-700 font-semibold">
                   Your world of trips starts here.
                 </p>
@@ -74,7 +98,7 @@ export function MyTripsLanding({
                   className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_-12px_rgba(15,92,86,0.55)] hover:bg-[var(--primary-hover)]"
                 >
                   <Plus className="h-4 w-4" strokeWidth={2} aria-hidden />
-                  Create your first trip
+                  Get started
                 </button>
               </div>
             ) : (
