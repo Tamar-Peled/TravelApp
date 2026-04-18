@@ -1,8 +1,12 @@
 "use client";
 
 import type { Trip } from "@prisma/client";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { BreadcrumbNav } from "@/components/breadcrumb-nav";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { RenameTripDialog } from "@/components/rename-trip-dialog";
 
 type MyTripsLandingProps = {
   trips: Trip[];
@@ -12,6 +16,8 @@ type MyTripsLandingProps = {
   error: string | null;
   onSelectTrip: (tripId: string) => void;
   onCreateTrip: () => void;
+  onDeleteTrip: (tripId: string) => Promise<void>;
+  onRenameTrip: (tripId: string, name: string) => Promise<void>;
 };
 
 export function MyTripsLanding({
@@ -22,7 +28,13 @@ export function MyTripsLanding({
   error,
   onSelectTrip,
   onCreateTrip,
+  onDeleteTrip,
+  onRenameTrip,
 }: MyTripsLandingProps) {
+  const [tripToDelete, setTripToDelete] = useState<Trip | null>(null);
+  const [tripToRename, setTripToRename] = useState<Trip | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const dateLabel = (t: Trip) => {
     const fmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit" });
     const start = t.startDate ? new Date(t.startDate) : null;
@@ -128,13 +140,11 @@ export function MyTripsLanding({
             ) : (
               <div className="grid grid-cols-1 gap-4 min-[380px]:grid-cols-2 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {trips.map((t) => (
-                  <button
+                  <div
                     key={t.id}
-                    type="button"
-                    onClick={() => onSelectTrip(t.id)}
-                    className="touch-manipulation group relative aspect-[3/4] w-full overflow-hidden rounded-2xl text-left shadow-[0_2px_12px_-4px_rgba(15,23,42,0.16),0_1px_2px_-1px_rgba(15,23,42,0.06)] transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-[0_6px_20px_-8px_rgba(15,23,42,0.20)] active:translate-y-0 active:shadow-[0_2px_12px_-4px_rgba(15,23,42,0.18)]"
+                    className="group relative aspect-[3/4] w-full overflow-hidden rounded-2xl text-left shadow-[0_2px_12px_-4px_rgba(15,23,42,0.16),0_1px_2px_-1px_rgba(15,23,42,0.06)] transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-[0_6px_20px_-8px_rgba(15,23,42,0.20)] active:translate-y-0 active:shadow-[0_2px_12px_-4px_rgba(15,23,42,0.18)]"
                   >
-                    <div className="absolute inset-0 bg-zinc-100">
+                    <div className="absolute inset-0 z-0 bg-zinc-100">
                       {tripCoverPhotoRefs[t.id] ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -146,8 +156,8 @@ export function MyTripsLanding({
                         <div className="h-full w-full bg-gradient-to-br from-zinc-100 to-zinc-50" />
                       )}
                     </div>
-                    <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
-                    <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-2/3 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] p-3 sm:p-4">
                       {dateLabel(t) ? (
                         <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/80">
                           {dateLabel(t)}
@@ -160,13 +170,93 @@ export function MyTripsLanding({
                         {tripPlaceCounts[t.id] ?? 0} saved
                       </p>
                     </div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectTrip(t.id)}
+                      className="absolute inset-0 z-[3] cursor-pointer touch-manipulation"
+                      aria-label={`Open trip ${t.name}`}
+                    />
+                    <div className="absolute right-2 top-2 z-[4] flex gap-1.5 sm:right-3 sm:top-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setTripToRename(t);
+                        }}
+                        className="touch-manipulation flex h-9 w-9 items-center justify-center rounded-xl border border-white/25 bg-black/35 text-white opacity-100 shadow-md backdrop-blur-md transition-opacity hover:bg-black/45 sm:opacity-0 sm:group-hover:opacity-100"
+                        aria-label={`Rename ${t.name}`}
+                      >
+                        <Pencil className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setTripToDelete(t);
+                        }}
+                        className="touch-manipulation flex h-9 w-9 items-center justify-center rounded-xl border border-white/25 bg-black/35 text-white opacity-100 shadow-md backdrop-blur-md transition-opacity hover:bg-red-600/85 sm:opacity-0 sm:group-hover:opacity-100"
+                        aria-label={`Delete ${t.name}`}
+                      >
+                        <Trash2 className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={tripToDelete != null}
+        title="Delete this trip?"
+        description={
+          tripToDelete
+            ? `“${tripToDelete.name}” and all places in it will be permanently removed.`
+            : null
+        }
+        confirmText="Delete trip"
+        tone="danger"
+        loading={deleteLoading}
+        onCancel={() => {
+          if (!deleteLoading) setTripToDelete(null);
+        }}
+        onConfirm={() => {
+          if (!tripToDelete) return;
+          setDeleteLoading(true);
+          void (async () => {
+            try {
+              await onDeleteTrip(tripToDelete.id);
+              setTripToDelete(null);
+              toast.success("Trip deleted");
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : "Could not delete trip");
+            } finally {
+              setDeleteLoading(false);
+            }
+          })();
+        }}
+      />
+
+      <RenameTripDialog
+        open={tripToRename != null}
+        initialName={tripToRename?.name ?? ""}
+        onCancel={() => setTripToRename(null)}
+        onSave={async (name) => {
+          if (!tripToRename) return;
+          try {
+            await onRenameTrip(tripToRename.id, name);
+            setTripToRename(null);
+            toast.success("Trip renamed");
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Could not rename trip");
+            throw e;
+          }
+        }}
+      />
     </div>
   );
 }

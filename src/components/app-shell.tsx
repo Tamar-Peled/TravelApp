@@ -24,7 +24,7 @@ function PlaceholderPanel({
   description: string;
 }) {
   return (
-    <div className="flex min-h-[50vh] flex-1 flex-col items-center justify-center px-4 py-12 sm:px-8 sm:py-16 lg:min-h-[calc(100vh-0px)]">
+    <div className="flex min-h-[50dvh] flex-1 flex-col items-center justify-center px-4 py-12 sm:px-8 sm:py-16 lg:min-h-[calc(100dvh-0px)]">
       <div className="max-w-md rounded-2xl border border-zinc-100 bg-white/80 px-6 py-10 text-center shadow-[0_2px_12px_-4px_rgba(15,23,42,0.06)] backdrop-blur-sm sm:px-8">
         <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">
           {title}
@@ -84,6 +84,11 @@ export function AppShell() {
         | null;
       if (!st?.active) return;
       suppressNextPush.current = true;
+      if ((st.active as string) === "inbox") {
+        setActive("trips");
+        setSelectedTripId(st.selectedTripId ?? null);
+        return;
+      }
       setActive(st.active);
       setSelectedTripId(st.selectedTripId ?? null);
     };
@@ -119,10 +124,7 @@ export function AppShell() {
   );
 
   const visiblePlaces = useMemo(() => {
-    if (active === "inbox") {
-      return places.filter((p) => p.tripId === null);
-    }
-    if (active === "trip") {
+    if (active === "trip" || active === "trip-planner") {
       if (!selectedTripId) return [];
       return places.filter((p) => p.tripId === selectedTripId);
     }
@@ -158,17 +160,23 @@ export function AppShell() {
   }, [trips]);
 
   function handleNavSelect(id: NavId) {
+    if (id === "trip-planner") {
+      setActive("trip-planner");
+      return;
+    }
     setActive(id);
     if (id === "trips") {
       setSelectedTripId(null);
     }
-    if (id === "inbox") {
-      setSelectedTripId(null);
-    }
+  }
+
+  function handleSelectTripForPlanner(tripId: string) {
+    setSelectedTripId(tripId);
+    setActive("trip-planner");
   }
 
   function showComingSoon() {
-    setToastMessage("We’re currently perfecting the AI Planner. Stay tuned!");
+    setToastMessage("This area isn’t available yet — stay tuned!");
   }
 
   function handleSelectTrip(tripId: string) {
@@ -180,6 +188,30 @@ export function AppShell() {
     setActive("trip");
     setSelectedTripId(trip.id);
     void refreshData();
+  }
+
+  async function handleDeleteTrip(tripId: string) {
+    const res = await fetch(`/api/trips/${tripId}`, { method: "DELETE" });
+    const json = (await res.json()) as { error?: string };
+    if (!res.ok) throw new Error(json.error || "Could not delete trip");
+    if (selectedTripId === tripId) {
+      setSelectedTripId(null);
+      if (active === "trip" || active === "trip-planner") {
+        setActive("trips");
+      }
+    }
+    await refreshData();
+  }
+
+  async function handleRenameTrip(tripId: string, name: string) {
+    const res = await fetch(`/api/trips/${tripId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const json = (await res.json()) as { error?: string };
+    if (!res.ok) throw new Error(json.error || "Could not rename trip");
+    await refreshData();
   }
 
   async function movePlaceToTrip(placeId: string, tripId: string | null) {
@@ -222,34 +254,44 @@ export function AppShell() {
             error={loadError}
             onSelectTrip={handleSelectTrip}
             onCreateTrip={() => setCreateTripOpen(true)}
+            onDeleteTrip={handleDeleteTrip}
+            onRenameTrip={handleRenameTrip}
           />
         )}
-        {(active === "inbox" || active === "trip") && (
+        {active === "trip" && selectedTripId && selectedTrip && (
           <CollectionLanding
             places={visiblePlaces}
             trips={trips}
             selectedTrip={selectedTrip}
             selectedTripId={selectedTripId}
-            selectedTripCoverPhotoRef={
-              active === "trip" && selectedTripId
-                ? (tripCoverPhotoRefs[selectedTripId] ?? null)
-                : null
-            }
-            mode={active === "trip" ? "trip" : "inbox"}
+            selectedTripCoverPhotoRef={tripCoverPhotoRefs[selectedTripId] ?? null}
             loading={loading}
             error={loadError}
             onAddPlace={() => setAddPlaceOpen(true)}
             onNavigateLibrary={handleNavigateLibrary}
+            onOpenPlanner={() => setActive("trip-planner")}
             onRefresh={() => void refreshData()}
           />
         )}
         {active === "map" && (
           <PlaceholderPanel
             title="Map"
-            description="See your places on a map — coming soon."
+            description="Browse your places on a map. Detailed map tools are still in development."
           />
         )}
-        {active === "trip-planner" && <TripPlannerPanel trips={trips} />}
+        {active === "trip-planner" && (
+          <TripPlannerPanel
+            trips={trips}
+            places={places}
+            selectedTripId={selectedTripId}
+            onSelectTripForPlanner={handleSelectTripForPlanner}
+            onBackToTripItems={() => {
+              if (selectedTripId) setActive("trip");
+              else setActive("trips");
+            }}
+            onRefresh={() => void refreshData()}
+          />
+        )}
       </div>
 
       <BottomNav active={active} onSelect={handleNavSelect} onComingSoon={showComingSoon} />
@@ -267,7 +309,9 @@ export function AppShell() {
       <AddPlaceModal
         open={addPlaceOpen}
         onClose={() => setAddPlaceOpen(false)}
-        currentTripId={active === "trip" ? selectedTripId : null}
+        currentTripId={
+          active === "trip" || active === "trip-planner" ? selectedTripId : null
+        }
         onCreated={() => void refreshData()}
       />
       <CreateTripModal

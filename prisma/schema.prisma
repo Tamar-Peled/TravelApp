@@ -98,6 +98,8 @@ model Trip {
   city    String?
   startDate DateTime?
   endDate   DateTime?
+  /// Optional custom titles for planner days, e.g. {"1":"Arrival in Seoul"} (keys are day numbers as strings).
+  plannerDayLabels Json?
   userId String @map("ownerId")
 
   // Public share link token (when enabled in-app). If set, trip is viewable read-only by anyone with the link.
@@ -149,6 +151,12 @@ model Place {
   latitude         Float?
   longitude        Float?
   photoReference   String?
+  /// Day number within the trip itinerary (1 = first day). Null = not scheduled.
+  plannerDay       Int?
+  /// Sort order within the same day (lower = earlier). Null treated as 0.
+  plannerOrder     Int?
+  /// Optional part of day: Morning, Afternoon, or Evening. Null when unscheduled or unspecified.
+  timeSlot         String?
 
   addedByUserId String?
   addedBy       User?   @relation("PlaceAddedBy", fields: [addedByUserId], references: [id], onDelete: SetNull)

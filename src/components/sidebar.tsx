@@ -95,7 +95,9 @@ export function Sidebar({
         </p>
         <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
           {recentTrips.map((t) => {
-            const isTripActive = active === "trip" && selectedTripId === t.id;
+            const isTripActive =
+              (active === "trip" || active === "trip-planner") &&
+              selectedTripId === t.id;
             return (
               <li key={t.id}>
                 <button

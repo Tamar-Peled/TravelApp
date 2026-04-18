@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import type { PlaceCategory } from "@prisma/client";
+import type { PlaceCategory, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { getTripAccess } from "@/lib/trip-access";
 import { canAddPlaceToTrip, canViewTripContent } from "@/lib/trip-permissions";
+import { MAX_PLANNER_DAYS } from "@/lib/planner-constants";
 
 type PatchBody = {
   tripId?: string | null;
@@ -11,6 +12,10 @@ type PatchBody = {
   notes?: string | null;
   subLocation?: string | null;
   category?: PlaceCategory | null;
+  plannerDay?: number | null;
+  plannerOrder?: number | null;
+  /** Cleared when unscheduling (plannerDay null). */
+  timeSlot?: string | null;
 };
 
 export async function PATCH(
@@ -53,7 +58,25 @@ export async function PATCH(
       }
     }
 
-    // If moving between trips/inbox, validate target access too.
+    if (
+      body.plannerDay !== undefined &&
+      body.plannerDay !== null &&
+        (!Number.isInteger(body.plannerDay) ||
+          body.plannerDay < 1 ||
+          body.plannerDay > MAX_PLANNER_DAYS)
+    ) {
+      return NextResponse.json({ error: "Invalid plannerDay" }, { status: 400 });
+    }
+
+    if (
+      body.plannerOrder !== undefined &&
+      body.plannerOrder !== null &&
+      (!Number.isInteger(body.plannerOrder) || body.plannerOrder < 0)
+    ) {
+      return NextResponse.json({ error: "Invalid plannerOrder" }, { status: 400 });
+    }
+
+    // If moving between trips (or off-trip), validate target access too.
     if (body.tripId !== undefined && body.tripId !== place.tripId) {
       const nextTripId = body.tripId;
       if (nextTripId) {
@@ -70,29 +93,55 @@ export async function PATCH(
           return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
       } else {
-        // moving to Inbox: only the place owner can do this
+        // moving off-trip: only the place owner can do this
         if (place.userId !== userId) {
           return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
       }
     }
 
+    const tripChanged =
+      body.tripId !== undefined && body.tripId !== place.tripId;
+
+    const unscheduling =
+      !tripChanged && body.plannerDay === null;
+
+    const updateData = {
+      tripId: body.tripId === undefined ? undefined : body.tripId,
+      description:
+        body.description === undefined
+          ? undefined
+          : body.description?.trim() || null,
+      notes: body.notes === undefined ? undefined : body.notes?.trim() || null,
+      subLocation:
+        body.subLocation === undefined
+          ? undefined
+          : body.subLocation?.trim() || null,
+      category: body.category === undefined ? undefined : body.category,
+      plannerDay: tripChanged
+        ? null
+        : body.plannerDay === undefined
+          ? undefined
+          : body.plannerDay,
+      plannerOrder: tripChanged
+        ? null
+        : unscheduling
+          ? null
+          : body.plannerOrder === undefined
+            ? undefined
+            : body.plannerOrder,
+      timeSlot: tripChanged
+        ? null
+        : unscheduling
+          ? null
+          : body.timeSlot === undefined
+            ? undefined
+            : body.timeSlot,
+    } as Prisma.PlaceUpdateInput;
+
     const updated = await prisma.place.update({
       where: { id },
-      data: {
-        tripId: body.tripId === undefined ? undefined : body.tripId,
-        description:
-          body.description === undefined
-            ? undefined
-            : body.description?.trim() || null,
-        notes:
-          body.notes === undefined ? undefined : body.notes?.trim() || null,
-        subLocation:
-          body.subLocation === undefined
-            ? undefined
-            : body.subLocation?.trim() || null,
-        category: body.category === undefined ? undefined : body.category,
-      },
+      data: updateData,
       include: { trip: true },
     });
 

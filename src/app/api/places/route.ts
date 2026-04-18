@@ -8,7 +8,6 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const tripId = searchParams.get("tripId");
-    const scope = searchParams.get("scope"); // "inbox" | undefined
     const userId = await requireUserId();
 
     if (tripId) {
@@ -28,25 +27,23 @@ export async function GET(req: Request) {
 
     const places = await prisma.place.findMany({
       where: {
-        ...(scope === "inbox"
-          ? { tripId: null, userId }
-          : tripId
-            ? { tripId }
-            : {
-                OR: [
-                  { userId },
-                  {
-                    trip: {
-                      is: {
-                        OR: [
-                          { userId },
-                          { collaborators: { some: { userId } } },
-                        ],
-                      },
+        ...(tripId
+          ? { tripId }
+          : {
+              OR: [
+                { userId },
+                {
+                  trip: {
+                    is: {
+                      OR: [
+                        { userId },
+                        { collaborators: { some: { userId } } },
+                      ],
                     },
                   },
-                ],
-              }),
+                },
+              ],
+            }),
       },
       include: { trip: true },
       orderBy: { updatedAt: "desc" },

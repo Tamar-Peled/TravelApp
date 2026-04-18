@@ -309,7 +309,7 @@ export function AddPlaceModal({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              tripId: currentTripId, // Trip context or Inbox (null)
+              tripId: currentTripId,
               name: d.name,
               city: d.city,
               country: d.country,
@@ -330,7 +330,7 @@ export function AddPlaceModal({
         }),
       );
       void results;
-      const dest = currentTripId ? "this trip" : "Inbox";
+      const dest = currentTripId ? "this trip" : "My Trips";
       toast.success(`Items added to ${dest}`);
       onCreated();
       onClose();
@@ -733,7 +733,7 @@ export function AddPlaceModal({
           <p className="mt-3 text-xs text-zinc-500">
             Adds to{" "}
             <span className="font-semibold text-zinc-700">
-              {currentTripId ? "this trip" : "Inbox"}
+              {currentTripId ? "this trip" : "My Trips (pick a trip first)"}
             </span>
             .
           </p>

@@ -35,7 +35,7 @@ export function MarketingLanding() {
           {[
             { title: "Paste", desc: "Links and notes become structured items." },
             { title: "Upload", desc: "Screenshots → extracted places automatically." },
-            { title: "Organize", desc: "Inbox to Trips, shared with collaborators." },
+            { title: "Organize", desc: "Trips and folders, shared with collaborators." },
           ].map((c) => (
             <div
               key={c.title}

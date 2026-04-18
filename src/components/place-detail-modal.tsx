@@ -292,7 +292,7 @@ export function PlaceDetailModal({
               disabled={!canEdit || saving}
               className="min-h-11 w-full rounded-xl border border-zinc-200/90 bg-white px-3 py-2 text-sm font-medium text-zinc-900 outline-none focus:border-zinc-300 focus:shadow-[0_0_0_3px_rgba(15,92,86,0.12)] disabled:opacity-60"
             >
-              <option value="">Inbox</option>
+              <option value="">No trip</option>
               {trips.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}

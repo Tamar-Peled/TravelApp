@@ -10,7 +10,7 @@ import {
   Image as ImageIcon,
   LayoutGrid,
   List,
-  FolderPlus,
+  CalendarRange,
   MapPin,
   Mountain,
   Plus,
@@ -28,14 +28,14 @@ import { TripLinkShareModal } from "@/components/trip-link-share-modal";
 import { TripShareModal } from "@/components/trip-share-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CategorySelect } from "@/components/category-select";
+import { CATEGORY_META } from "@/lib/place-category-meta";
 import { toast } from "sonner";
 
-const INBOX_CRUMBS = [
-  { label: "My Library", key: "library" },
-  { label: "Inbox", key: "inbox" },
-] as const;
-
-export type PlaceWithTrip = Place & { trip: Trip | null };
+export type PlaceWithTrip = Place & {
+  trip: Trip | null;
+  /** Set after `plisma db push` + `prisma generate` */
+  plannerOrder?: number | null;
+};
 
 export type PlaceCardData = {
   id: string;
@@ -46,33 +46,6 @@ export type PlaceCardData = {
   description: string | null;
   photoReference: string | null;
   sourceUrl: string | null;
-};
-
-const CATEGORY_META: Record<
-  string,
-  { label: string; cls: string; Icon: typeof MapPin }
-> = {
-  HOTEL: { label: "Hotel", cls: "bg-sky-500/[0.10] text-sky-900/80", Icon: MapPin },
-  RESTAURANT: {
-    label: "Restaurant",
-    cls: "bg-orange-500/[0.10] text-orange-900/80",
-    Icon: UtensilsCrossed,
-  },
-  VIEWPOINT: {
-    label: "Viewpoint",
-    cls: "bg-violet-500/[0.10] text-violet-900/80",
-    Icon: Camera,
-  },
-  ACTIVITY: {
-    label: "Activity",
-    cls: "bg-emerald-500/[0.10] text-emerald-900/80",
-    Icon: Mountain,
-  },
-  TRANSPORT: {
-    label: "Transport",
-    cls: "bg-zinc-500/[0.08] text-zinc-700",
-    Icon: BusFront,
-  },
 };
 
 function CategoryBadge({
@@ -96,31 +69,22 @@ function CategoryBadge({
 
 function PlaceCard({
   place,
-  draggable,
   onOpen,
   onDelete,
   onUpdateCategory,
-  onMoveToTrip,
 }: {
   place: PlaceCardData;
-  draggable: boolean;
   onOpen: () => void;
   onDelete: () => void;
   onUpdateCategory: (next: PlaceCategory | null) => void;
-  onMoveToTrip?: (placeId: string) => void;
 }) {
   return (
     <article
-      draggable={draggable}
       role="button"
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onOpen();
-      }}
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/placeId", place.id);
-        e.dataTransfer.effectAllowed = "move";
       }}
       className="group relative flex min-h-[170px] cursor-pointer flex-col overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-[0_2px_18px_-8px_rgba(15,23,42,0.14),0_1px_2px_-1px_rgba(15,23,42,0.04)] transition-[box-shadow,transform,background-color] duration-300 ease-out hover:-translate-y-1 hover:bg-zinc-50/40 hover:shadow-[0_18px_44px_-22px_rgba(15,23,42,0.28)] active:translate-y-0"
     >
@@ -140,19 +104,6 @@ function PlaceCard({
           )}
         </div>
         <div className="absolute left-3 top-3 right-3 flex items-start justify-end gap-2">
-          {onMoveToTrip && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onMoveToTrip(place.id);
-              }}
-              className="touch-manipulation relative z-20 flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white/95 text-zinc-600 shadow-sm backdrop-blur hover:bg-white"
-              aria-label="Move to Trip"
-            >
-              <FolderPlus className="h-4 w-4" strokeWidth={1.5} aria-hidden />
-            </button>
-          )}
           <button
             type="button"
             onClick={(e) => {
@@ -271,11 +222,11 @@ type CollectionLandingProps = {
   selectedTrip: Trip | null;
   selectedTripId: string | null;
   selectedTripCoverPhotoRef?: string | null;
-  mode: "inbox" | "trip";
   loading: boolean;
   error: string | null;
   onAddPlace: () => void;
   onNavigateLibrary: () => void;
+  onOpenPlanner: () => void;
   onRefresh: () => void;
 };
 
@@ -285,11 +236,11 @@ export function CollectionLanding({
   selectedTrip,
   selectedTripId,
   selectedTripCoverPhotoRef,
-  mode,
   loading,
   error,
   onAddPlace,
   onNavigateLibrary,
+  onOpenPlanner,
   onRefresh,
 }: CollectionLandingProps) {
   const cards = places.map(toCardData);
@@ -310,19 +261,14 @@ export function CollectionLanding({
     canEdit: boolean;
     sharedWithText: string | null;
   }>({ isShared: false, canEdit: true, sharedWithText: null });
-  const crumbs =
-    mode === "trip" ? buildTripBreadcrumb(selectedTrip) : [...INBOX_CRUMBS];
-  const isTripView = mode === "trip" && Boolean(selectedTripId && selectedTrip);
+  const crumbs = buildTripBreadcrumb(selectedTrip);
+  const isTripView = Boolean(selectedTripId && selectedTrip);
   const [view, setView] = useState<"grid" | "list">("grid");
   const pageSize = 12;
   const [visibleCount, setVisibleCount] = useState(pageSize);
-  const [moveMenuOpenForId, setMoveMenuOpenForId] = useState<string | null>(null);
-  const [moveQuery, setMoveQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const emptyTrip =
     isTripView && !loading && !error && cards.length === 0;
-  const emptyLibrary =
-    mode === "inbox" && !loading && !error && cards.length === 0;
 
   const openPlace = useMemo(() => {
     const base = places.find((p) => p.id === openPlaceId) ?? null;
@@ -408,16 +354,6 @@ export function CollectionLanding({
     };
   }, [isTripView, selectedTripId, session?.user?.id]);
 
-  const grouped = useMemo(() => {
-    if (!isTripView) return null;
-    const groups = new Map<string, PlaceCardData[]>();
-    for (const c of filteredCards) {
-      const key = c.category ?? "Uncategorized";
-      groups.set(key, [...(groups.get(key) ?? []), c]);
-    }
-    return [...groups.entries()];
-  }, [filteredCards, isTripView]);
-
   const displayedCards = useMemo(
     () => filteredCards.slice(0, visibleCount),
     [filteredCards, visibleCount],
@@ -495,8 +431,8 @@ export function CollectionLanding({
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
 
   const collapseScope = useMemo(() => {
-    return isTripView && selectedTripId ? `trip:${selectedTripId}` : `mode:${mode}`;
-  }, [isTripView, selectedTripId, mode]);
+    return `trip:${selectedTripId ?? "none"}`;
+  }, [selectedTripId]);
 
   useEffect(() => {
     const key = `travelai:collapsedCats:${collapseScope}`;
@@ -539,11 +475,11 @@ export function CollectionLanding({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleCount(pageSize);
-  }, [pageSize, mode, selectedTripId]);
+  }, [pageSize, selectedTripId]);
 
   // Default Grid for each trip; persist preference per scope (bonus).
   useEffect(() => {
-    const scope = isTripView && selectedTripId ? `trip:${selectedTripId}` : `mode:${mode}`;
+    const scope = `trip:${selectedTripId ?? "none"}`;
     const key = `travelai:view:${scope}`;
     try {
       const raw = window.localStorage.getItem(key);
@@ -561,17 +497,17 @@ export function CollectionLanding({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleCount(pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTripId, mode, isTripView]);
+  }, [selectedTripId]);
 
   useEffect(() => {
-    const scope = isTripView && selectedTripId ? `trip:${selectedTripId}` : `mode:${mode}`;
+    const scope = `trip:${selectedTripId ?? "none"}`;
     const key = `travelai:view:${scope}`;
     try {
       window.localStorage.setItem(key, view);
     } catch {
       // ignore
     }
-  }, [view, selectedTripId, mode, isTripView]);
+  }, [view, selectedTripId]);
 
   async function updateCategory(placeId: string, category: PlaceCategory | null) {
     await fetch(`/api/places/${placeId}`, {
@@ -645,16 +581,14 @@ export function CollectionLanding({
       });
       onRefresh();
 
-      // If moved out of current view, optimistically hide so it disappears immediately.
-      const movedOutOfInbox = mode === "inbox" && input.tripId !== null;
       const movedOutOfTrip =
-        mode === "trip" && Boolean(selectedTripId) && input.tripId !== selectedTripId;
-      if (movedOutOfInbox || movedOutOfTrip) {
+        Boolean(selectedTripId) && input.tripId !== selectedTripId;
+      if (movedOutOfTrip) {
         setOptimisticallyHiddenIds((prev) => new Set(prev).add(input.id));
         toast.success(
           input.tripId
             ? `Moved to ${trips.find((t) => t.id === input.tripId)?.name ?? "trip"}`
-            : "Moved to Inbox",
+            : "Removed from this trip",
         );
       }
     } catch (e) {
@@ -664,35 +598,6 @@ export function CollectionLanding({
         const next = new Map(prev);
         if (prevOverride) next.set(input.id, prevOverride);
         else next.delete(input.id);
-        return next;
-      });
-    }
-  }
-
-  async function moveItem(placeId: string, tripId: string | null) {
-    const name = tripId ? trips.find((t) => t.id === tripId)?.name ?? "trip" : "Inbox";
-    // snappy disappearance
-    const movedOutOfInbox = mode === "inbox" && tripId !== null;
-    const movedOutOfTrip =
-      mode === "trip" && Boolean(selectedTripId) && tripId !== selectedTripId;
-    if (movedOutOfInbox || movedOutOfTrip) {
-      setOptimisticallyHiddenIds((prev) => new Set(prev).add(placeId));
-    }
-    try {
-      const res = await fetch(`/api/places/${placeId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tripId }),
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error || "Move failed");
-      toast.success(`Moved to ${name}`);
-      onRefresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Move failed");
-      setOptimisticallyHiddenIds((prev) => {
-        const next = new Set(prev);
-        next.delete(placeId);
         return next;
       });
     }
@@ -748,9 +653,9 @@ export function CollectionLanding({
         <div className="text-center lg:text-left">
           <div className="mt-1 flex flex-col items-center gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h1 className="text-balance text-2xl font-extrabold leading-tight tracking-tight text-[var(--primary)] sm:text-3xl lg:text-4xl">
-              {isTripView && selectedTrip ? selectedTrip.name : <>Inbox</>}
+              {selectedTrip?.name ?? "Trip"}
             </h1>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-end">
               <div className="hidden items-center overflow-hidden rounded-xl border border-zinc-200/90 bg-white shadow-sm md:flex">
                 <button
                   type="button"
@@ -775,7 +680,17 @@ export function CollectionLanding({
                   List
                 </button>
               </div>
-              {isTripView && selectedTripId && (
+              {selectedTripId && (
+                <button
+                  type="button"
+                  onClick={onOpenPlanner}
+                  className="touch-manipulation inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200/70 bg-white px-3 py-2 text-sm font-semibold text-[var(--primary)] shadow-sm hover:bg-zinc-50"
+                >
+                  <CalendarRange className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                  Planner
+                </button>
+              )}
+              {selectedTripId && (
                 <button
                   type="button"
                   onClick={() => {
@@ -790,9 +705,7 @@ export function CollectionLanding({
             </div>
           </div>
           <p className="mx-auto mt-2 max-w-xl text-pretty text-sm leading-relaxed text-zinc-500 lg:mx-0">
-            {isTripView
-              ? "Items in this trip — add from TikTok, Instagram, or your notes."
-              : "All new extractions land here first. Review, then move into trips."}
+            Items in this trip — add from TikTok, Instagram, or your notes.
           </p>
         </div>
 
@@ -812,7 +725,7 @@ export function CollectionLanding({
           <div className="mt-6 sm:mt-8">
             <div className="mb-3 flex flex-col gap-0.5 sm:mb-4 sm:flex-row sm:items-end sm:justify-between">
               <h2 className="text-lg font-semibold tracking-tight text-zinc-900 sm:text-xl">
-                {isTripView ? "Items in this trip" : "Unsorted items"}
+                Items in this trip
               </h2>
               <p className="text-xs text-zinc-500">
                 {filteredCards.length} saved
@@ -845,17 +758,7 @@ export function CollectionLanding({
               </button>
             )}
 
-            {emptyLibrary && (
-              <button
-                type="button"
-                onClick={onAddPlace}
-                className="w-full rounded-xl border border-dashed border-zinc-200/90 bg-white/60 px-6 py-14 text-center text-sm text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:bg-white/75"
-              >
-                Inbox is empty. Click to add your first item.
-              </button>
-            )}
-
-            {!emptyTrip && !emptyLibrary && (
+            {!emptyTrip && (
               <>
                 {view === "list" ? (
                   <div className="space-y-4">
@@ -973,18 +876,10 @@ export function CollectionLanding({
                                       <PlaceCard
                                         key={place.id}
                                         place={place}
-                                        draggable={mode === "inbox"}
                                         onOpen={() => setOpenPlaceId(place.id)}
                                         onDelete={async () => {
                                           setDeletePlaceId(place.id);
                                         }}
-                                        onMoveToTrip={
-                                          mode === "inbox"
-                                            ? (id) => {
-                                                setMoveMenuOpenForId(id);
-                                              }
-                                            : undefined
-                                        }
                                         onUpdateCategory={async (next) => {
                                           await updateCategory(place.id, next);
                                         }}
@@ -1077,64 +972,6 @@ export function CollectionLanding({
           void deletePlace(id);
         }}
       />
-      {moveMenuOpenForId && (
-        <div
-          className="fixed inset-0 z-[65]"
-          onClick={() => {
-            setMoveMenuOpenForId(null);
-            setMoveQuery("");
-          }}
-        >
-          <div
-            className="absolute right-5 top-[96px] w-[280px] rounded-2xl border border-zinc-200/80 bg-white/95 p-3 shadow-[0_24px_80px_-28px_rgba(15,23,42,0.35)] backdrop-blur"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-400">
-              Move item to…
-            </p>
-            <input
-              value={moveQuery}
-              onChange={(e) => setMoveQuery(e.target.value)}
-              placeholder="Search trips…"
-              className="mt-2 min-h-10 w-full rounded-xl border border-zinc-200/90 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-300 focus:shadow-[0_0_0_3px_var(--primary-muted)]"
-            />
-            <div className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-zinc-100">
-              <button
-                type="button"
-                onClick={() => {
-                  const id = moveMenuOpenForId;
-                  setMoveMenuOpenForId(null);
-                  setMoveQuery("");
-                  void moveItem(id, null);
-                }}
-                className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-              >
-                <span>Inbox</span>
-                <span className="text-xs text-zinc-400">Unsorted</span>
-              </button>
-              {trips
-                .filter((t) =>
-                  t.name.toLowerCase().includes(moveQuery.trim().toLowerCase()),
-                )
-                .map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => {
-                      const id = moveMenuOpenForId;
-                      setMoveMenuOpenForId(null);
-                      setMoveQuery("");
-                      void moveItem(id, t.id);
-                    }}
-                    className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-                  >
-                    <span className="truncate">{t.name}</span>
-                  </button>
-                ))}
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
